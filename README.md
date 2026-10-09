@@ -1,6 +1,7 @@
 # C5 Wi-Fi スコープ
 
 ESP32-C5(M5Stamp C5)を使って、Wi-Fi 環境を見える化する、2つのブラウザツールです。サーバーは要らず、ブラウザとボードをUSBでつなぐだけで動きます。
+筆者のGithub Pageで公開しているURIは、次のとおりです。(https://myucsts.github.io/c5-wifi-scope/)
 
 | ツール | できること |
 |---|---|
