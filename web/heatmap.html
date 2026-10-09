@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: MIT
+     Copyright (c) 2026 宮内工務店 -->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wi-Fi ヒートマップ</title>
+<style>
+  :root {
+    --paper: #eceff0; --panel: #f9fafa; --ink: #1c2a30; --mute: #66777e; --line: #d3dadd;
+    --b24: #1f7a6d; --b5: #2f4fb3; --warn: #b3412a; --amber: #b57a1d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 18px clamp(12px, 2.5vw, 28px) 36px; background: var(--paper); color: var(--ink);
+    font-family: "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+    font-variant-numeric: tabular-nums; line-height: 1.6;
+  }
+  header { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; justify-content: space-between; max-width: 1400px; margin: 0 auto 10px; }
+  h1 { font-size: 20px; margin: 0; font-weight: 700; letter-spacing: .02em; }
+  h3 { font-size: 15px; margin: 14px 0 6px; }
+  h3:first-child { margin-top: 2px; }
+  .tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button, select, input { font: inherit; color: inherit; }
+  button { cursor: pointer; border: 1px solid var(--ink); background: transparent; padding: 4px 12px; border-radius: 3px; }
+  button:hover:not(:disabled) { background: #dfe5e7; }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: var(--ink); color: var(--paper); }
+  button.primary:hover:not(:disabled) { background: #2f4048; }
+  button.small { padding: 1px 8px; font-size: 13px; }
+  button:focus-visible, select:focus-visible, input:focus-visible, canvas:focus-visible { outline: 2px solid var(--b5); outline-offset: 2px; }
+  .seg { display: inline-flex; border: 1px solid var(--ink); border-radius: 3px; overflow: hidden; flex-wrap: wrap; }
+  .seg button { border: 0; border-radius: 0; padding: 4px 12px; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+  select, input[type="number"], input[type="text"] { border: 1px solid var(--line); background: #fff; border-radius: 3px; padding: 3px 6px; max-width: 100%; }
+  input[type="number"] { width: 5.5em; }
+  #msg { max-width: 1400px; margin: 0 auto 8px; min-height: 1.5em; color: var(--warn); }
+  #devices { max-width: 1400px; margin: 0 auto 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .dev { display: inline-flex; gap: 10px; align-items: center; padding: 3px 4px 3px 10px; background: var(--panel); border-left: 4px solid var(--b24); font-size: 14px; }
+  .layout { max-width: 1400px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
+  @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } }
+  .stage, .side { background: var(--panel); padding: 10px 12px; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+  canvas#plan { display: block; width: 100%; background: #fff; touch-action: none; cursor: crosshair; border: 1px solid var(--line); }
+  .status { margin-top: 6px; font-size: 14px; color: var(--mute); min-height: 1.6em; }
+  .prog { height: 6px; background: var(--line); margin-top: 4px; display: none; }
+  .prog i { display: block; height: 100%; width: 0; background: var(--b24); }
+  .tabs { margin-bottom: 8px; }
+  .tabpane { display: none; }
+  .tabpane.on { display: block; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin: 5px 0; font-size: 14px; }
+  .row label { display: inline-flex; gap: 6px; align-items: center; color: var(--mute); }
+  .hint { font-size: 13px; color: var(--mute); margin: 4px 0; }
+  .list { max-height: 240px; overflow: auto; border-top: 1px solid var(--line); }
+  .list .it { display: flex; gap: 8px; align-items: center; padding: 4px 2px; border-bottom: 1px solid var(--line); font-size: 14px; cursor: default; }
+  .list .it.sel { background: #e6efe9; }
+  .list .it .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .list .it .sub { color: var(--mute); font-size: 12px; }
+  .legend { display: flex; flex-direction: column; gap: 2px; font-size: 13px; margin: 6px 0; }
+  .legend span i { display: inline-block; width: 14px; height: 12px; margin-right: 8px; vertical-align: -1px; }
+  dialog { border: 1px solid var(--ink); border-radius: 4px; background: var(--panel); color: var(--ink); padding: 16px 18px; max-width: min(92vw, 380px); }
+  dialog::backdrop { background: rgba(28,42,48,.35); }
+  dialog form { display: flex; flex-direction: column; gap: 10px; }
+  dialog .btns { display: flex; flex-direction: row-reverse; justify-content: flex-start; gap: 8px; }
+  .foot { max-width: 1400px; margin: 14px auto 0; color: var(--mute); font-size: 13px; }
+  input[type="file"] { display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Wi-Fi ヒートマップ</h1>
+  <div class="tools">
+    <button class="primary" id="connect">ボードを接続</button>
+    <button id="open">開く</button>
+    <button id="save">保存</button>
+    <button id="csv">CSV</button>
+    <button id="png">画像</button>
+    <input type="file" id="fileProject" accept=".json,application/json">
+    <input type="file" id="fileImage" accept="image/*">
+    <input type="file" id="fileBase" accept=".json,application/json">
+  </div>
+</header>
+<div id="msg" role="status"></div>
+<div id="devices"></div>
+
+<div class="layout">
+  <div class="stage">
+    <div class="toolbar">
+      <div class="seg" id="tools" role="group" aria-label="ツール">
+        <button data-t="measure" aria-pressed="true">測定</button>
+        <button data-t="wall" aria-pressed="false">壁</button>
+        <button data-t="room" aria-pressed="false">部屋</button>
+        <button data-t="ap" aria-pressed="false">AP</button>
+        <button data-t="text" aria-pressed="false">文字</button>
+        <button data-t="erase" aria-pressed="false">消す</button>
+        <button data-t="pan" aria-pressed="false">移動</button>
+      </div>
+      <button id="undo" class="small">元に戻す</button>
+      <button id="fit" class="small">全体表示</button>
+      <span class="hint" id="toolHint"></span>
+    </div>
+    <canvas id="plan" tabindex="0" aria-label="図面とヒートマップ"></canvas>
+    <div class="prog" id="prog"><i></i></div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="side">
+    <div class="seg tabs" id="tabs" role="group" aria-label="パネル">
+      <button data-p="plan" aria-pressed="true">図面</button>
+      <button data-p="meas" aria-pressed="false">測定</button>
+      <button data-p="view" aria-pressed="false">表示</button>
+    </div>
+
+    <div class="tabpane on" id="p-plan">
+      <h3>図面を用意する</h3>
+      <div class="row"><button id="loadImg">図面の画像を読み込む</button><button id="clearImg" class="small">画像を外す</button></div>
+      <p class="hint">PNG / JPG。PDFは画像にして読み込んでください。画像が無いときは、下の大きさを決めて、壁や部屋を描けます。</p>
+      <div class="row">
+        <label>横 <input type="number" id="W" min="2" max="500" step="0.5"> m</label>
+        <label>縦 <input type="number" id="H" min="2" max="500" step="0.5"> m</label>
+      </div>
+      <div class="row"><button id="calib">縮尺を合わせる(2点をクリック)</button></div>
+      <div class="row">
+        <label><input type="checkbox" id="snap" checked>壁・部屋をグリッドに吸着(0.5m)</label>
+        <label><input type="checkbox" id="grid" checked>グリッド表示</label>
+      </div>
+    </div>
+
+    <div class="tabpane" id="p-meas">
+      <h3>1. 測るAPを決める</h3>
+      <div class="row"><button id="discover">APを探す(10秒)</button></div>
+      <div class="hint">ボードを接続して押すと、全チャンネルを巡回して一覧にします。測りたいSSIDにチェックを入れてください。</div>
+      <div class="list" id="ssidList"></div>
+      <h3>2. 測る</h3>
+      <div class="row"><label>1か所の測定時間 <select id="dur"><option>5</option><option selected>8</option><option>12</option><option>20</option></select> 秒</label></div>
+      <p class="hint">図面の「測定」ツールで、いま立っている位置をクリックすると、その場で測定が始まります。測定中は動かないでください。</p>
+      <h3>測定点</h3>
+      <div class="list" id="pointList"></div>
+      <h3>選んだ測定点の履歴</h3>
+      <div class="list" id="histList"></div>
+      <p class="hint">同じ点を測り直すと、前の結果が履歴に残ります。</p>
+    </div>
+
+    <div class="tabpane" id="p-view">
+      <h3>ヒートマップの設定</h3>
+      <div class="row"><label>SSID <select id="vSsid"></select></label></div>
+      <div class="row"><label>AP(BSSID) <select id="vBssid"></select></label></div>
+      <div class="row"><label>帯域 <select id="vBand"><option value="all">両方</option><option value="24">2.4GHz</option><option value="5">5GHz</option></select></label></div>
+      <div class="row">
+        <label>目標 <input type="number" id="target" value="-67" step="1"> dBm</label>
+        <label>補正 <input type="number" id="calibDb" value="0" step="1"> dB</label>
+      </div>
+      <div class="row">
+        <label>表示 <select id="vMode"><option value="grade">等級</option><option value="smooth">連続</option></select></label>
+        <label>影響半径 <input type="number" id="radius" value="8" min="2" max="60" step="1"> m</label>
+      </div>
+      <div class="row">
+        <label>不透明度 <input type="range" id="opacity" min="15" max="100" value="70"></label>
+        <label><input type="checkbox" id="showVal" checked>測定点の値を表示</label>
+      </div>
+      <div class="legend" id="legend"></div>
+      <h3>比較(移設・設定変更の前後)</h3>
+      <div class="row"><button id="baseFix">いまの結果を比較元に固定</button></div>
+      <div class="row"><button id="baseOpen">比較元のファイルを開く</button><button id="baseClear" class="small">比較をやめる</button></div>
+      <div class="row">
+        <label>比較元 <select id="cmpSrc"><option value="base">固定・開いたデータ</option><option value="history">各点の1つ前の測定</option></select></label>
+        <label>表示 <select id="cmpMode"><option value="now">現在</option><option value="base">比較元</option><option value="diff">差分(現在−比較元)</option></select></label>
+      </div>
+      <p class="hint" id="baseInfo"></p>
+      <p class="hint">色は測定点の間を補間した推定です。壁や扉による減衰は考えていないので、測定点から離れた場所ほど当てになりません(影響半径を超えると塗りません)。</p>
+      <p class="hint" id="summary"></p>
+    </div>
+  </div>
+</div>
+
+<p class="foot">
+  測定には、このツール用のスキャナ用ファームウェア(このリポジトリの firmware/c5_wifi_scope の最新版)を書き込んだボードを使います。複数台つなぐと、測るチャンネルを分担して、1か所あたりの取得回数が増えます。
+  値は校正していない目安です(ボードのアンテナで受けたRSSIで、スマホやPCとは数dBずれることがあります)。必要なら「補正」で調整できます。
+  Chrome / Edge で開いてください(Web Serial が必要です)。
+</p>
+
+<dialog id="dlg">
+  <form method="dialog">
+    <label id="dlgLabel"></label>
+    <input id="dlgInput" type="text" autocomplete="off">
+    <div class="btns"><button class="primary" value="ok" id="dlgOk">OK</button><button value="cancel" id="dlgCancel">キャンセル</button></div>
+  </form>
+</dialog>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const FONT = '"BIZ UDPGothic","Hiragino Sans","Yu Gothic UI","Meiryo",system-ui,sans-serif';
+const INK = '#1c2a30', MUTE = '#66777e', GRID = '#e3e8ea', GRID5 = '#cfd6d9', WARN = '#b3412a', ACC = '#2f4fb3';
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const toast = t => { $('#msg').textContent = t; };
+const setStatus = t => { $('#status').textContent = t; };
+
+// ================= モデル =================
+let P = newProject();
+function newProject() { return { v: 1, W: 30, H: 20, image: null, objects: [], points: [], seq: 0, sel: { ssids: [] }, view: { ssid: '*', bssid: '*', band: 'all', target: -67, calib: 0, mode: 'grade', radius: 8, opacity: 70, showVal: true, cmp: 'now', cmpSrc: 'base' }, snap: true, grid: true }; }
+let seen = new Map();        // bssid -> {ssid, ch, w, rssi}
+let imgEl = null;            // 読み込んだ画像(HTMLImageElement)
+let tool = 'measure', selPoint = null;
+let undoStack = [];
+const snapshot = () => { undoStack.push(JSON.stringify({ W: P.W, H: P.H, objects: P.objects, points: P.points, seq: P.seq })); if (undoStack.length > 40) undoStack.shift(); };
+function undo() { const s = undoStack.pop(); if (!s) return; Object.assign(P, JSON.parse(s)); selPoint = null; afterChange(true); }
+
+// ================= ボード(スキャナ用ファームウェア) =================
+const devices = new Set();
+const send = (d, c) => d.writer.write(c + '\n').catch(() => {});
+let meas = null;             // 測定の状態
+let discovering = false;
+
+async function connect() {
+  if (!('serial' in navigator)) { toast('このブラウザは Web Serial に対応していません。Chrome か Edge で開いてください。'); return; }
+  let port; try { port = await navigator.serial.requestPort(); } catch { return; }
+  try { await port.open({ baudRate: 115200 }); } catch (e) { toast('ポートを開けませんでした: ' + e.message); return; }
+  try { await port.setSignals({ dataTerminalReady: false, requestToSend: false }); } catch {}
+  const dev = { port, id: '----', closed: false, cfg: '' };
+  const dec = new TextDecoderStream(), enc = new TextEncoderStream();
+  dev.pipes = [port.readable.pipeTo(dec.writable).catch(() => {}), enc.readable.pipeTo(port.writable).catch(() => {})];
+  dev.reader = dec.readable.getReader(); dev.writer = enc.writable.getWriter();
+  devices.add(dev); addChip(dev); toast('');
+  setTimeout(() => send(dev, 'hello'), 1500);
+  setTimeout(() => { if (!dev.closed && !dev.hello) toast('ボードから応答がありません。スキャナ用ファームウェアが書き込まれているか確認してください。'); }, 4500);
+  readLoop(dev);
+}
+async function readLoop(dev) {
+  let buf = '';
+  try { for (;;) { const { value, done } = await dev.reader.read(); if (done) break; buf += value; let i; while ((i = buf.indexOf('\n')) >= 0) { onLine(dev, buf.slice(0, i)); buf = buf.slice(i + 1); } if (buf.length > 6000) buf = ''; } } catch {}
+  cleanup(dev);
+}
+async function disconnect(dev) {
+  try { await dev.reader.cancel(); } catch {} try { await dev.writer.close(); } catch {}
+  await Promise.all(dev.pipes); try { await dev.port.close(); } catch {} cleanup(dev);
+}
+function cleanup(dev) { if (dev.closed) return; dev.closed = true; devices.delete(dev); dev.el && dev.el.remove(); }
+function addChip(dev) {
+  const el = document.createElement('span'); el.className = 'dev';
+  const t = document.createElement('span'); t.textContent = 'C5 ----'; dev.label = t;
+  const b = document.createElement('button'); b.className = 'small'; b.textContent = '切断'; b.onclick = () => disconnect(dev);
+  el.append(t, b); dev.el = el; $('#devices').append(el);
+}
+function onLine(dev, line) {
+  line = line.trim(); if (line[0] !== '{') return;
+  let m; try { m = JSON.parse(line); } catch { return; }
+  if (m.t === 'hello') {
+    dev.hello = true; dev.id = m.id; dev.label.textContent = 'C5 ' + m.id;
+    if (m.chans === undefined && !dev.warned) { dev.warned = true; toast('このボードのファームウェアは測定機能に対応していません。最新の c5_wifi_scope.ino を書き込んでください。'); }
+  } else if (m.t === 'ap') {
+    const k = String(m.bssid).toUpperCase(), prev = seen.get(k) || {};
+    seen.set(k, { ssid: m.ssid || prev.ssid || '', ch: m.ch, w: m.w ?? prev.w, rssi: m.rssi, ts: Date.now() });
+    if (discovering) renderSsidList();
+  } else if (m.t === 'm' && meas && meas.collecting) {
+    const k = String(m.bssid).toUpperCase(), a = meas.acc.get(k) || { ssid: '', ch: m.ch, w: m.w, n: 0, sum: 0, max: -200 };
+    a.ssid = m.ssid || a.ssid; a.ch = m.ch; a.w = m.w; a.n += m.n; a.sum += m.avg * m.n; a.max = Math.max(a.max, m.max);
+    meas.acc.set(k, a);
+  } else if (m.t === 'mdone' && meas && meas.collecting) { meas.done.add(dev); }
+}
+const bands = ch => ch <= 14 ? '24' : '5';
+
+async function configure(devs, chansPerDev, dwell) {
+  for (const [i, d] of devs.entries()) {
+    const key = `${chansPerDev[i]}|${dwell}`;
+    if (d.cfg === key) continue;
+    send(d, 'scan 0'); send(d, 'dwell ' + dwell); send(d, 'chans ' + chansPerDev[i]); d.cfg = key;
+  }
+  await sleep(300);
+}
+
+async function discover() {
+  const devs = [...devices]; if (!devs.length) { toast('先にボードを接続してください。'); return; }
+  if (meas || discovering) return; toast(''); discovering = true; $('#discover').disabled = true;
+  for (const d of devs) { send(d, 'scan 0'); send(d, 'dwell 120'); send(d, 'chans all'); send(d, 'band a'); d.cfg = ''; }
+  seen = new Map(); renderSsidList();
+  const T = 10; showProg(true);
+  for (let t = 0; t < T * 10; t++) { setProg((t + 1) / (T * 10)); setStatus(`APを探しています… ${Math.ceil(T - t / 10)} 秒 (${seen.size} 件)`); await sleep(100); }
+  showProg(false); discovering = false; $('#discover').disabled = false;
+  setStatus(`${seen.size} 件のAPが見つかりました。測るSSIDにチェックを入れてください。`);
+  renderSsidList();
+}
+
+function ssidGroups() {
+  const g = new Map();
+  for (const [bssid, a] of seen) { const s = a.ssid || '(非公開)'; if (!g.has(s)) g.set(s, []); g.get(s).push({ bssid, ...a }); }
+  return [...g.entries()].map(([ssid, list]) => ({ ssid, list, best: Math.max(...list.map(x => x.rssi)), chs: [...new Set(list.map(x => x.ch))].sort((a, b) => a - b) })).sort((a, b) => b.best - a.best);
+}
+function renderSsidList() {
+  const box = $('#ssidList'); box.replaceChildren();
+  ssidGroups().forEach(g => {
+    const it = document.createElement('label'); it.className = 'it';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = P.sel.ssids.includes(g.ssid);
+    cb.onchange = () => { P.sel.ssids = cb.checked ? [...new Set([...P.sel.ssids, g.ssid])] : P.sel.ssids.filter(x => x !== g.ssid); scheduleSave(); };
+    const t = document.createElement('span'); t.className = 'grow'; t.textContent = g.ssid;
+    const s = document.createElement('span'); s.className = 'sub'; s.textContent = `${g.list.length}台 ch ${g.chs.join(',')} / ${g.best} dBm`;
+    it.append(cb, t, s); box.append(it);
+  });
+  if (!box.children.length) { const p = document.createElement('div'); p.className = 'hint'; p.textContent = 'まだ一覧がありません。'; box.append(p); }
+}
+
+function targetChannels() {
+  const chs = new Set();
+  for (const [, a] of seen) if (P.sel.ssids.includes(a.ssid || '(非公開)')) chs.add(a.ch);
+  return [...chs].sort((a, b) => a - b);
+}
+
+async function measureAt(pt) {
+  if (meas || discovering) return;
+  const devs = [...devices]; if (!devs.length) { toast('先にボードを接続してください。'); return; }
+  const chs = targetChannels(); if (!chs.length) { toast('「測定」タブで、測るSSIDを選んでください(先に「APを探す」)。'); return; }
+  toast('');
+  const act = devs.slice(0, Math.min(devs.length, chs.length)), lists = act.map(() => []);
+  chs.forEach((c, i) => lists[i % act.length].push(c));
+  const dur = +$('#dur').value;
+  meas = { pt, acc: new Map(), collecting: false, done: new Set(), cancel: false };
+  const clr = pt.id; showProg(true); draw();
+  await configure(act, lists.map(l => l.join(',')), 110);
+  meas.collecting = true; act.forEach(d => send(d, 'mstart'));
+  const t0 = performance.now();
+  while (performance.now() - t0 < dur * 1000 && !meas.cancel) {
+    setProg((performance.now() - t0) / (dur * 1000));
+    setStatus(`測定中… 残り ${Math.max(0, Math.ceil(dur - (performance.now() - t0) / 1000))} 秒(${pt.label} / ch ${chs.join(',')})`); await sleep(100);
+  }
+  act.forEach(d => send(d, 'mstop'));
+  const t1 = performance.now(); while (meas.done.size < act.length && performance.now() - t1 < 2500) await sleep(50);
+  meas.collecting = false; showProg(false);
+  const res = meas; meas = null;
+  if (res.cancel) { setStatus('測定を取りやめました。'); if (!pt.aps) removePoint(pt, false); draw(); return; }
+  if (!res.acc.size) { setStatus('APが聞こえませんでした。もう一度測るか、測定時間を長くしてください。'); if (!pt.aps) removePoint(pt, false); draw(); return; }
+  const aps = {};
+  for (const [bssid, a] of res.acc) aps[bssid] = { ssid: a.ssid, ch: a.ch, w: a.w, n: a.n, avg: +(a.sum / a.n).toFixed(1), max: a.max };
+  if (pt.aps) { pt.history = pt.history || []; pt.history.push({ t: pt.t, dur: pt.dur, aps: pt.aps }); if (pt.history.length > 20) pt.history.shift(); }   // 前の結果を履歴に残す
+  pt.aps = aps; pt.t = Date.now(); pt.dur = dur;
+  if (P.view.ssid === '*' && P.sel.ssids.length) P.view.ssid = P.sel.ssids[0];          // 近所のAPの電波を混ぜないよう、測っているSSIDに絞る
+  refreshViewSelects();
+  const low = Object.values(aps).some(a => P.sel.ssids.includes(a.ssid) && a.n < 3);
+  setStatus(`${pt.label}: ${Object.keys(aps).length} 台のAPを記録しました。` + (low ? ' 取得回数の少ないAPがあります(測定時間を延ばすと安定します)。' : ''));
+  afterChange(true);
+}
+function cancelMeasure() { if (meas) meas.cancel = true; }
+function showProg(on) { $('#prog').style.display = on ? 'block' : 'none'; if (!on) setProg(0); }
+function setProg(f) { $('#prog i').style.width = Math.round(f * 100) + '%'; }
+
+// ================= 測定点 =================
+function addPoint(x, y) { snapshot(); const pt = { id: ++P.seq, label: 'P' + P.seq, x, y, aps: null }; P.points.push(pt); selPoint = pt.id; afterChange(false); return pt; }
+function removePoint(pt, snap = true) { if (snap) snapshot(); P.points = P.points.filter(p => p !== pt); if (selPoint === pt.id) selPoint = null; afterChange(true); }
+const pointById = id => P.points.find(p => p.id === id);
+
+// 表示条件に合う値(dBm)
+function pointValue(pt) {
+  if (!pt.aps) return null; const V = P.view; let best = null;
+  for (const [bssid, a] of Object.entries(pt.aps)) {
+    if (V.ssid !== '*' && a.ssid !== V.ssid) continue;
+    if (V.bssid !== '*' && bssid !== V.bssid) continue;
+    if (V.band !== 'all' && bands(a.ch) !== V.band) continue;
+    const v = a.avg + V.calib; if (best === null || v > best) best = v;
+  }
+  return best;
+}
+
+// ================= 色 =================
+const CLASS = [{ c: '#1f7a6d', n: '強い' }, { c: '#8cc3b2', n: '良好' }, { c: '#e3c46d', n: 'やや弱い' }, { c: '#d98b3a', n: '弱い' }, { c: '#b3412a', n: '届きにくい' }];
+function classOf(v, T) { return v >= T + 10 ? 0 : v >= T ? 1 : v >= T - 6 ? 2 : v >= T - 14 ? 3 : 4; }
+const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+function colorFor(v, T, mode) {
+  if (mode === 'grade') return hex(CLASS[classOf(v, T)].c);
+  const stops = [[T + 12, hex(CLASS[0].c)], [T + 3, hex(CLASS[1].c)], [T - 3, hex(CLASS[2].c)], [T - 10, hex(CLASS[3].c)], [T - 18, hex(CLASS[4].c)]];
+  if (v >= stops[0][0]) return stops[0][1]; if (v <= stops[4][0]) return stops[4][1];
+  for (let i = 1; i < stops.length; i++) if (v >= stops[i][0]) { const [v0, c0] = stops[i - 1], [v1, c1] = stops[i], u = (v0 - v) / (v0 - v1); return c0.map((x, k) => Math.round(x + (c1[k] - x) * u)); }
+  return stops[4][1];
+}
+
+// 差分(現在 − 比較元)。プラスが改善
+const DCLASS = [{ c: '#1f7a6d', n: '大きく改善' }, { c: '#8cc3b2', n: '改善' }, { c: '#dde2e4', n: 'ほぼ同じ' }, { c: '#d98b3a', n: '悪化' }, { c: '#b3412a', n: '大きく悪化' }];
+const dclass = d => d >= 6 ? 0 : d >= 2 ? 1 : d > -2 ? 2 : d > -6 ? 3 : 4;
+function dcolor(d, mode) {
+  if (mode === 'grade') return hex(DCLASS[dclass(d)].c);
+  const stops = [[8, hex(DCLASS[0].c)], [3, hex(DCLASS[1].c)], [0, hex(DCLASS[2].c)], [-3, hex(DCLASS[3].c)], [-8, hex(DCLASS[4].c)]];
+  if (d >= stops[0][0]) return stops[0][1]; if (d <= stops[4][0]) return stops[4][1];
+  for (let i = 1; i < stops.length; i++) if (d >= stops[i][0]) { const [v0, c0] = stops[i - 1], [v1, c1] = stops[i], u = (v0 - d) / (v0 - v1); return c0.map((x, k) => Math.round(x + (c1[k] - x) * u)); }
+  return stops[4][1];
+}
+const fmtD = d => (d >= 0 ? '+' : '−') + Math.abs(Math.round(d));
+
+// ================= ヒートマップ(逆距離加重) =================
+let heat = null;     // {c, W, H}
+let heatDirty = true;
+const pointsFor = list => list.map(p => ({ x: p.x, y: p.y, v: pointValue(p), id: p.id })).filter(o => o.v !== null);
+// 比較元の測定(値あり)。履歴モードでは、各点の1つ前の測定を同じ位置で使う
+function baseEntries() {
+  if (P.view.cmpSrc === 'history') return P.points.map(p => { const h = (p.history || []).at(-1); return h ? { x: p.x, y: p.y, v: pointValue({ aps: h.aps }), id: p.id } : null; }).filter(o => o && o.v !== null);
+  return P.base ? pointsFor(P.base.points) : [];
+}
+function baseValueNear(p) {
+  const list = baseEntries(); if (P.view.cmpSrc === 'history') { const o = list.find(e => e.id === p.id); return o ? o.v : null; }
+  let best = null, bd = 1.5; for (const e of list) { const d = Math.hypot(e.x - p.x, e.y - p.y); if (d < bd) { bd = d; best = e.v; } } return best;
+}
+let heatStats = null;
+function idwField(pts, gw, gh, cs, R) {
+  const val = new Float32Array(gw * gh), fade = new Float32Array(gw * gh), R2 = R * R, eps = 0.25;
+  for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
+    const x = (i + 0.5) * cs, y = (j + 0.5) * cs; let sw = 0, sv = 0, dmin = 1e9;
+    for (const o of pts) { const dx = o.x - x, dy = o.y - y, d2 = dx * dx + dy * dy; if (d2 < dmin) dmin = d2; if (d2 > R2 * 4) continue; const w = 1 / (d2 + eps); sw += w; sv += w * o.v; }
+    const q = j * gw + i; if (!sw || dmin > R2) continue;
+    const d = Math.sqrt(dmin); val[q] = sv / sw; fade[q] = d <= R * 0.6 ? 1 : Math.max(0, (R - d) / (R * 0.4));
+  }
+  return { val, fade };
+}
+function buildHeat() {
+  const V = P.view, mode = V.cmp, now = pointsFor(P.points), base = mode === 'now' ? [] : baseEntries();
+  heatStats = null;
+  if ((mode !== 'base' && !now.length) || (mode !== 'now' && !base.length)) { heat = null; return; }
+  const cs = Math.max(P.W, P.H) / 280, gw = Math.max(2, Math.ceil(P.W / cs)), gh = Math.max(2, Math.ceil(P.H / cs)), R = Math.max(2, V.radius);
+  const fN = mode !== 'base' ? idwField(now, gw, gh, cs, R) : null, fB = mode !== 'now' ? idwField(base, gw, gh, cs, R) : null;
+  const c = document.createElement('canvas'); c.width = gw; c.height = gh; const g = c.getContext('2d'), img = g.createImageData(gw, gh);
+  const st = { overlap: 0, belowN: 0, belowB: 0, imp: 0, worse: 0, sum: 0 };
+  for (let q = 0; q < gw * gh; q++) {
+    let col, a;
+    if (mode === 'diff') {
+      a = Math.min(fN.fade[q], fB.fade[q]); if (!a) continue; const d = fN.val[q] - fB.val[q]; col = dcolor(d, V.mode);
+      if (a > 0.5) { st.overlap++; if (fN.val[q] < V.target) st.belowN++; if (fB.val[q] < V.target) st.belowB++; if (d >= 2) st.imp++; if (d <= -2) st.worse++; st.sum += d; }
+    } else { const f = mode === 'base' ? fB : fN; a = f.fade[q]; if (!a) continue; col = colorFor(f.val[q], V.target, V.mode); }
+    const o = q * 4; img.data[o] = col[0]; img.data[o + 1] = col[1]; img.data[o + 2] = col[2]; img.data[o + 3] = Math.round(255 * a);
+  }
+  if (mode === 'diff') heatStats = st;
+  g.putImageData(img, 0, 0); heat = { c };
+}
+
+// ================= ビュー(座標変換) =================
+const cv = $('#plan'), cx = cv.getContext('2d');
+let view = { s: 20, ox: 20, oy: 20 };
+const toScreen = (x, y) => [x * view.s + view.ox, y * view.s + view.oy];
+const toWorld = (px, py) => [(px - view.ox) / view.s, (py - view.oy) / view.s];
+function sizeCanvas() {
+  const w = cv.parentElement.clientWidth - 24, h = Math.round(Math.min(680, Math.max(360, w * P.H / P.W + 30))), dpr = window.devicePixelRatio || 1;
+  cv.style.width = w + 'px'; cv.style.height = h + 'px';
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  return { w, h, dpr };
+}
+function fitView() { const { w, h } = sizeCanvas(); const s = Math.min((w - 40) / P.W, (h - 40) / P.H); view = { s, ox: (w - P.W * s) / 2, oy: (h - P.H * s) / 2 }; draw(); }
+
+// ================= 描画 =================
+let drawReq = false;
+function draw() { if (drawReq) return; drawReq = true; requestAnimationFrame(() => { drawReq = false; render(); }); }
+let hoverW = null, wallStart = null, roomDrag = null, calibPts = [], apDrag = null;
+function apIcon(x, y, hollow, name) {
+  cx.save(); cx.beginPath(); cx.arc(x, y, 10, 0, 6.3);
+  if (hollow) { cx.setLineDash([3, 3]); cx.strokeStyle = MUTE; cx.lineWidth = 1.5; cx.stroke(); cx.setLineDash([]); }
+  else { cx.fillStyle = INK; cx.fill(); cx.strokeStyle = '#fff'; cx.lineWidth = 1.6; cx.lineCap = 'round'; for (const r of [3.5, 6.5]) { cx.beginPath(); cx.arc(x, y + 3, r, -2.35, -0.79); cx.stroke(); } cx.beginPath(); cx.arc(x, y + 3.5, 1.1, 0, 6.3); cx.fillStyle = '#fff'; cx.fill(); }
+  if (name) { cx.font = '12px ' + FONT; cx.textAlign = 'left'; cx.textBaseline = 'middle'; cx.fillStyle = hollow ? MUTE : INK; cx.fillText(name, x + 14, y - 12); }
+  cx.restore();
+}
+// 画面に出す測定点の印(現在 / 比較元 / 差分)
+function markerList() {
+  const V = P.view, T = V.target;
+  const cls = v => v === null ? '#fff' : CLASS[classOf(v, T)].c;
+  if (V.cmp === 'now') return P.points.map(p => { const v = pointValue(p); return { p, x: p.x, y: p.y, txt: v === null ? p.label : `${Math.round(v)}`, col: cls(v) }; });
+  if (V.cmp === 'diff') return P.points.map(p => { const v = pointValue(p), b = baseValueNear(p); let col = '#fff', txt = v === null ? p.label : `${Math.round(v)}`; if (v !== null && b !== null) { const d = v - b; col = DCLASS[dclass(d)].c; txt = fmtD(d); } return { p, x: p.x, y: p.y, txt, col }; });
+  return baseEntries().map(e => ({ p: null, x: e.x, y: e.y, txt: `${Math.round(e.v)}`, col: cls(e.v) }));
+}
+function render() {
+  const { w, h, dpr } = sizeCanvas(); cx.setTransform(dpr, 0, 0, dpr, 0, 0); cx.clearRect(0, 0, w, h);
+  const [x0, y0] = toScreen(0, 0), [x1, y1] = toScreen(P.W, P.H);
+  cx.fillStyle = '#f3f5f5'; cx.fillRect(0, 0, w, h); cx.fillStyle = '#fff'; cx.fillRect(x0, y0, x1 - x0, y1 - y0);
+  if (imgEl) { cx.globalAlpha = 0.95; cx.drawImage(imgEl, x0, y0, x1 - x0, y1 - y0); cx.globalAlpha = 1; }
+  if (P.grid) {
+    cx.lineWidth = 1;
+    for (let m = 0; m <= P.W; m++) { const px = Math.round(toScreen(m, 0)[0]) + .5; if (view.s < 8 && m % 5) continue; cx.strokeStyle = m % 5 ? GRID : GRID5; cx.beginPath(); cx.moveTo(px, y0); cx.lineTo(px, y1); cx.stroke(); }
+    for (let m = 0; m <= P.H; m++) { const py = Math.round(toScreen(0, m)[1]) + .5; if (view.s < 8 && m % 5) continue; cx.strokeStyle = m % 5 ? GRID : GRID5; cx.beginPath(); cx.moveTo(x0, py); cx.lineTo(x1, py); cx.stroke(); }
+  }
+  cx.strokeStyle = INK; cx.lineWidth = 1; cx.strokeRect(x0 + .5, y0 + .5, x1 - x0, y1 - y0);
+  if (heatDirty) { buildHeat(); heatDirty = false; if (P.view.cmp === 'diff') renderSummary(); }   // 差分の範囲集計は描画で作る
+  if (heat) { cx.globalAlpha = P.view.opacity / 100; cx.imageSmoothingEnabled = true; cx.drawImage(heat.c, x0, y0, x1 - x0, y1 - y0); cx.globalAlpha = 1; }
+
+  // 図面の線
+  cx.lineCap = 'round'; cx.lineJoin = 'round';
+  for (const o of P.objects) {
+    if (o.type === 'ap') continue;
+    if (o.type === 'wall') { const a = toScreen(o.x1, o.y1), b = toScreen(o.x2, o.y2); cx.strokeStyle = INK; cx.lineWidth = 3; cx.beginPath(); cx.moveTo(...a); cx.lineTo(...b); cx.stroke(); }
+    else if (o.type === 'room') { const a = toScreen(o.x, o.y), b = toScreen(o.x + o.w, o.y + o.h); cx.strokeStyle = INK; cx.lineWidth = 2; cx.strokeRect(a[0], a[1], b[0] - a[0], b[1] - a[1]); if (o.label) { cx.fillStyle = INK; cx.font = '13px ' + FONT; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(o.label, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2); } }
+    else if (o.type === 'text') { const a = toScreen(o.x, o.y); cx.fillStyle = INK; cx.font = '14px ' + FONT; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(o.s, a[0], a[1]); }
+  }
+  // 作図中のプレビュー
+  cx.strokeStyle = ACC; cx.lineWidth = 2; cx.setLineDash([6, 4]);
+  if (wallStart && hoverW) { cx.beginPath(); cx.moveTo(...toScreen(wallStart[0], wallStart[1])); cx.lineTo(...toScreen(hoverW[0], hoverW[1])); cx.stroke(); }
+  if (roomDrag) { const a = toScreen(roomDrag.x0, roomDrag.y0), b = toScreen(roomDrag.x1, roomDrag.y1); cx.strokeRect(a[0], a[1], b[0] - a[0], b[1] - a[1]); }
+  cx.setLineDash([]);
+  if (calibPts.length) { cx.strokeStyle = WARN; cx.fillStyle = WARN; cx.lineWidth = 2; const a = toScreen(...calibPts[0]); cx.beginPath(); cx.arc(a[0], a[1], 4, 0, 6.3); cx.fill(); if (calibPts[1] || hoverW) { const b = toScreen(...(calibPts[1] || hoverW)); cx.beginPath(); cx.moveTo(...a); cx.lineTo(...b); cx.stroke(); } }
+
+  // AP(設置場所)
+  if (P.view.cmp !== 'now' && P.base && P.view.cmpSrc === 'base') for (const a of P.base.aps || []) { const [sx, sy] = toScreen(a.x, a.y); apIcon(sx, sy, true, a.name); }
+  for (const o of P.objects) if (o.type === 'ap') { const [sx, sy] = toScreen(o.x, o.y); apIcon(sx, sy, P.view.cmp === 'base' && P.view.cmpSrc === 'base', o.name); }
+
+  // 測定点
+  for (const m of markerList()) {
+    const [sx, sy] = toScreen(m.x, m.y), p = m.p, sel = p && p.id === selPoint, busy = p && meas && meas.pt === p;
+    cx.beginPath(); cx.arc(sx, sy, p ? 7 : 5, 0, 6.3); cx.fillStyle = m.col; cx.fill();
+    cx.lineWidth = sel ? 3 : 1.5; cx.strokeStyle = busy ? WARN : sel ? ACC : INK; cx.stroke();
+    if (busy) { cx.beginPath(); cx.arc(sx, sy, 12 + (performance.now() / 120) % 6, 0, 6.3); cx.strokeStyle = WARN; cx.lineWidth = 1.5; cx.stroke(); draw(); }
+    if (P.view.showVal || sel) { cx.font = '12px ' + FONT; cx.textAlign = 'left'; cx.textBaseline = 'middle'; cx.fillStyle = '#fff'; cx.globalAlpha = .8; cx.fillRect(sx + 9, sy - 8, cx.measureText(m.txt).width + 6, 16); cx.globalAlpha = 1; cx.fillStyle = INK; cx.fillText(m.txt, sx + 12, sy); }
+  }
+  // 縮尺バー
+  const bar = P.W >= 40 ? 10 : P.W >= 15 ? 5 : 2, bx = 12, by = h - 14; cx.strokeStyle = INK; cx.lineWidth = 2; cx.beginPath(); cx.moveTo(bx, by); cx.lineTo(bx + bar * view.s, by); cx.stroke();
+  cx.fillStyle = INK; cx.font = '12px ' + FONT; cx.textAlign = 'left'; cx.textBaseline = 'bottom'; cx.fillText(bar + ' m', bx, by - 4);
+  // 凡例
+  if (heat) {
+    const T = P.view.target, diff = P.view.cmp === 'diff', lx = w - 190, ly = 10;
+    cx.fillStyle = 'rgba(255,255,255,.9)'; cx.fillRect(lx - 6, ly - 4, 188, 114); cx.font = '12px ' + FONT; cx.textAlign = 'left'; cx.textBaseline = 'middle';
+    const rng = diff ? ['+6 以上', '+2 〜 +6', '−2 〜 +2', '−6 〜 −2', '−6 未満'] : [`≥ ${T + 10}`, `${T} 〜 ${T + 10}`, `${T - 6} 〜 ${T}`, `${T - 14} 〜 ${T - 6}`, `< ${T - 14}`], cls = diff ? DCLASS : CLASS;
+    cx.fillStyle = MUTE; cx.fillText(diff ? '差分 (dB) 現在−比較元' : (P.view.cmp === 'base' ? '比較元の信号強度 (dBm)' : '信号強度 (dBm)'), lx, ly + 6);
+    cls.forEach((c, i) => { cx.fillStyle = c.c; cx.fillRect(lx, ly + 18 + i * 18, 16, 12); cx.fillStyle = INK; cx.fillText(`${rng[i]}  ${c.n}`, lx + 22, ly + 24 + i * 18); });
+  }
+}
+
+// ================= 図面の道具 =================
+const snapV = (v, on) => on ? Math.round(v / 0.5) * 0.5 : v;
+function snapWorld(wx, wy) {
+  let x = wx, y = wy;
+  if (P.snap) { x = snapV(x, true); y = snapV(y, true); }
+  for (const o of P.objects) if (o.type === 'wall') for (const [ex, ey] of [[o.x1, o.y1], [o.x2, o.y2]]) { if (Math.hypot((ex - wx) * view.s, (ey - wy) * view.s) < 9) { x = ex; y = ey; } }
+  return [Math.max(0, Math.min(P.W, x)), Math.max(0, Math.min(P.H, y))];
+}
+function distSeg(px, py, ax, ay, bx, by) { const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy; let t = l2 ? ((px - ax) * dx + (py - ay) * dy) / l2 : 0; t = Math.max(0, Math.min(1, t)); return Math.hypot(px - (ax + t * dx), py - (ay + t * dy)); }
+function eraseAt(wx, wy) {
+  let best = null, bd = 10 / view.s;
+  for (const o of P.objects) {
+    let d = 1e9;
+    if (o.type === 'wall') d = distSeg(wx, wy, o.x1, o.y1, o.x2, o.y2);
+    else if (o.type === 'room') d = Math.min(distSeg(wx, wy, o.x, o.y, o.x + o.w, o.y), distSeg(wx, wy, o.x + o.w, o.y, o.x + o.w, o.y + o.h), distSeg(wx, wy, o.x + o.w, o.y + o.h, o.x, o.y + o.h), distSeg(wx, wy, o.x, o.y + o.h, o.x, o.y));
+    else if (o.type === 'text') d = Math.hypot(wx - o.x, wy - o.y) - 0.3;
+    else if (o.type === 'ap') d = Math.hypot(wx - o.x, wy - o.y) - 6 / view.s;
+    if (d < bd) { bd = d; best = o; }
+  }
+  if (best) { snapshot(); P.objects = P.objects.filter(o => o !== best); afterChange(false); }
+}
+
+// ================= ダイアログ =================
+function ask(label, value = '', type = 'text') {
+  return new Promise(res => {
+    const d = $('#dlg'), inp = $('#dlgInput'); $('#dlgLabel').textContent = label; inp.type = type; inp.value = value; if (type === 'number') inp.step = 'any';
+    const done = () => { d.removeEventListener('close', done); res(d.returnValue === 'ok' ? inp.value : null); };
+    d.addEventListener('close', done); d.returnValue = ''; d.showModal(); inp.focus(); inp.select();
+  });
+}
+
+// ================= ポインタ操作 =================
+const HINTS = { measure: '立っている位置をクリックすると、その場で測定します', wall: 'クリックで壁を引きます(連続して引けます)。ダブルクリックか右クリックで終了', room: 'ドラッグで部屋(四角)を描きます', text: 'クリックした場所に文字を置きます', erase: '壁・部屋・文字をクリックして消します', ap: 'クリックでAPの位置を置きます。置いたAPはドラッグで動かせ、クリックで名前を変えられます', pan: 'ドラッグで図面を動かします(ホイールで拡大縮小)' };
+let drag = null;
+function evPos(e) { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId); const [px, py] = evPos(e), [wx, wy] = toWorld(px, py);
+  drag = { px, py, moved: false, pan: tool === 'pan' || e.button === 1 || e.shiftKey, ox: view.ox, oy: view.oy, button: e.button };
+  if (e.button === 2) { drag = null; return; }
+  if (tool === 'ap' && !drag.pan) { const hit = P.objects.find(o => o.type === 'ap' && Math.hypot(...toScreen(o.x, o.y).map((v, i) => v - [px, py][i])) < 14); apDrag = hit ? { o: hit, moved: false } : null; }
+  if (tool === 'room' && !drag.pan) { const [sx, sy] = snapWorld(wx, wy); roomDrag = { x0: sx, y0: sy, x1: sx, y1: sy }; }
+});
+cv.addEventListener('pointermove', e => {
+  const [px, py] = evPos(e), [wx, wy] = toWorld(px, py);
+  hoverW = (tool === 'wall' || tool === 'scale' || calibPts.length) ? snapWorld(wx, wy) : null;
+  if (calibPts.length) hoverW = [wx, wy];
+  if (drag) {
+    if (Math.hypot(px - drag.px, py - drag.py) > 4) drag.moved = true;
+    if (drag.pan && drag.moved) { view.ox = drag.ox + px - drag.px; view.oy = drag.oy + py - drag.py; }
+    else if (roomDrag) { const [sx, sy] = snapWorld(wx, wy); roomDrag.x1 = sx; roomDrag.y1 = sy; }
+    else if (apDrag && drag.moved) { if (!apDrag.moved) { snapshot(); apDrag.moved = true; } apDrag.o.x = Math.max(0, Math.min(P.W, wx)); apDrag.o.y = Math.max(0, Math.min(P.H, wy)); }
+  }
+  draw();
+});
+cv.addEventListener('pointerup', async e => {
+  if (!drag) return; const d = drag; drag = null; const [px, py] = evPos(e), [wx, wy] = toWorld(px, py);
+  if (d.pan) { draw(); return; }
+  if (tool === 'room' && roomDrag) {
+    const r = roomDrag; roomDrag = null; const x = Math.min(r.x0, r.x1), y = Math.min(r.y0, r.y1), w = Math.abs(r.x1 - r.x0), h = Math.abs(r.y1 - r.y0);
+    if (w >= 0.5 && h >= 0.5) { snapshot(); const o = { type: 'room', x, y, w, h, label: '' }; P.objects.push(o); const t = await ask('部屋の名前(空でもかまいません)'); if (t) o.label = t; afterChange(false); }
+    draw(); return;
+  }
+  if (tool === 'ap') {
+    const a = apDrag; apDrag = null;
+    if (a && a.moved) { afterChange(false); return; }
+    if (a) { const n = await ask('APの名前', a.o.name || ''); if (n !== null) { snapshot(); a.o.name = n; afterChange(false); } return; }
+    if (d.moved) return;
+    if (wx < 0 || wy < 0 || wx > P.W || wy > P.H) return;
+    const n = await ask('APの名前', 'AP' + (P.objects.filter(o => o.type === 'ap').length + 1)); if (n === null) return;
+    snapshot(); P.objects.push({ type: 'ap', x: wx, y: wy, name: n }); afterChange(false); return;
+  }
+  if (d.moved) { draw(); return; }
+  if (calibPts.length || tool === 'scale') { await calibClick(wx, wy); return; }
+  if (tool === 'measure') {
+    const hit = P.points.find(p => Math.hypot(...toScreen(p.x, p.y).map((v, i) => v - [px, py][i])) < 11);
+    if (hit) { selPoint = hit.id; renderPointList(); draw(); return; }
+    if (wx < 0 || wy < 0 || wx > P.W || wy > P.H) { setStatus('図面の外です。'); return; }
+    if (meas) { setStatus('測定中です。終わるまでお待ちください。'); return; }
+    if (P.view.cmp !== 'now') { setStatus('比較の表示中は新しい点を置けません。「表示」タブで比較を「現在」に戻してください。'); return; }
+    if (!devices.size) { toast('先にボードを接続してください。'); return; }
+    if (!targetChannels().length) { toast('先に「測定」タブで「APを探す」を押し、測るSSIDにチェックを入れてください。'); return; }
+    const pt = addPoint(wx, wy); measureAt(pt); return;
+  }
+  if (tool === 'wall') { const p = snapWorld(wx, wy); if (!wallStart) wallStart = p; else { if (Math.hypot(p[0] - wallStart[0], p[1] - wallStart[1]) > 0.05) { snapshot(); P.objects.push({ type: 'wall', x1: wallStart[0], y1: wallStart[1], x2: p[0], y2: p[1] }); afterChange(false); } wallStart = p; } draw(); return; }
+  if (tool === 'text') { const t = await ask('置く文字'); if (t) { snapshot(); P.objects.push({ type: 'text', x: wx, y: wy, s: t }); afterChange(false); } return; }
+  if (tool === 'erase') { eraseAt(wx, wy); return; }
+});
+cv.addEventListener('dblclick', () => { if (tool === 'wall') { wallStart = null; draw(); } });
+cv.addEventListener('contextmenu', e => { e.preventDefault(); wallStart = null; calibPts = []; draw(); });
+cv.addEventListener('wheel', e => {
+  e.preventDefault(); const [px, py] = evPos(e), [wx, wy] = toWorld(px, py), f = Math.exp(-e.deltaY * 0.0015), s = Math.max(2, Math.min(400, view.s * f));
+  view.s = s; view.ox = px - wx * s; view.oy = py - wy * s; draw();
+}, { passive: false });
+window.addEventListener('keydown', e => {
+  if (e.target.matches('input,select,textarea')) return;
+  if (e.key === 'Escape') { wallStart = null; calibPts = []; roomDrag = null; cancelMeasure(); draw(); }
+  else if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); }
+});
+
+async function calibClick(wx, wy) {
+  calibPts.push([wx, wy]); draw();
+  if (calibPts.length < 2) { setStatus('もう1点をクリックしてください。'); return; }
+  const [a, b] = calibPts, d = Math.hypot(b[0] - a[0], b[1] - a[1]); const keep = calibPts.slice(); draw();
+  const v = await ask(`選んだ2点の実際の距離(m)。いまの図面では ${d.toFixed(2)} m です`, '', 'number'); calibPts = [];
+  const real = parseFloat(v); if (!(real > 0.1) || !(d > 0.01)) { setStatus('縮尺の変更を取りやめました。'); draw(); return; }
+  const k = real / d; snapshot(); scaleAll(k); setTool('measure'); afterChange(false); fitView(); setStatus(`縮尺を ${k.toFixed(3)} 倍にしました(図面 ${P.W.toFixed(1)} × ${P.H.toFixed(1)} m)。`);
+}
+function scaleAll(k) {
+  P.W *= k; P.H *= k; if (P.base) { P.base.W *= k; P.base.H *= k; P.base.points.forEach(p => { p.x *= k; p.y *= k; }); (P.base.aps || []).forEach(a => { a.x *= k; a.y *= k; }); }
+  P.objects.forEach(o => { for (const key of ['x', 'y', 'w', 'h', 'x1', 'y1', 'x2', 'y2']) if (o[key] !== undefined) o[key] *= k; });
+  P.points.forEach(p => { p.x *= k; p.y *= k; });
+}
+
+// ================= UI =================
+function setTool(t) {
+  tool = t; wallStart = null; roomDrag = null; if (t !== 'scale') calibPts = [];
+  document.querySelectorAll('#tools button').forEach(b => b.setAttribute('aria-pressed', b.dataset.t === t));
+  $('#toolHint').textContent = HINTS[t] || ''; cv.style.cursor = t === 'pan' ? 'grab' : 'crosshair'; draw();
+}
+document.querySelectorAll('#tools button').forEach(b => b.onclick = () => setTool(b.dataset.t));
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#tabs button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  document.querySelectorAll('.tabpane').forEach(p => p.classList.toggle('on', p.id === 'p-' + b.dataset.p));
+  if (b.dataset.p === 'view') refreshViewSelects();
+});
+$('#undo').onclick = undo; $('#fit').onclick = fitView;
+$('#connect').onclick = connect; $('#discover').onclick = discover;
+$('#calib').onclick = () => { setTool('scale'); setStatus('図面上の距離が分かる2点(たとえば廊下の端から端)をクリックしてください。'); $('#toolHint').textContent = '距離が分かる2点をクリック'; };
+
+function refreshSizeInputs() { $('#W').value = +P.W.toFixed(2); $('#H').value = +P.H.toFixed(2); $('#H').disabled = !!imgEl; }
+$('#W').onchange = () => { let w = +$('#W').value; if (!(w >= 2)) return refreshSizeInputs(); snapshot(); if (imgEl) { const asp = P.H / P.W; P.W = w; P.H = w * asp; } else P.W = w; afterChange(false); fitView(); refreshSizeInputs(); };
+$('#H').onchange = () => { let h = +$('#H').value; if (!(h >= 2)) return refreshSizeInputs(); snapshot(); P.H = h; afterChange(false); fitView(); };
+$('#snap').onchange = () => { P.snap = $('#snap').checked; scheduleSave(); };
+$('#grid').onchange = () => { P.grid = $('#grid').checked; scheduleSave(); draw(); };
+
+// 図面画像
+$('#loadImg').onclick = () => $('#fileImage').click();
+$('#fileImage').onchange = async () => {
+  const f = $('#fileImage').files[0]; $('#fileImage').value = ''; if (!f) return;
+  const url = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
+  const im = new Image(); await new Promise((res, rej) => { im.onload = res; im.onerror = rej; im.src = url; }).catch(() => { toast('画像を読み込めませんでした。'); });
+  if (!im.naturalWidth) return;
+  const v = await ask('この図面の横幅は何mですか?(あとから「縮尺を合わせる」で直せます)', String(Math.round(P.W)), 'number'); const w = parseFloat(v); if (!(w >= 2)) return;
+  snapshot(); const asp = im.naturalHeight / im.naturalWidth;
+  P.W = w; P.H = w * asp; P.image = url; imgEl = im; afterChange(false); fitView(); refreshSizeInputs();
+  setStatus('図面を読み込みました。縮尺がずれているときは「縮尺を合わせる」を使ってください。');
+};
+$('#clearImg').onclick = () => { snapshot(); P.image = null; imgEl = null; afterChange(false); refreshSizeInputs(); draw(); };
+
+// 表示タブ
+function refreshViewSelects() {
+  const V = P.view, ssids = new Set(); P.points.forEach(p => p.aps && Object.values(p.aps).forEach(a => ssids.add(a.ssid)));
+  const s = $('#vSsid'); s.replaceChildren(); const o0 = document.createElement('option'); o0.value = '*'; o0.textContent = 'すべて(最強の電波)'; s.append(o0);
+  [...ssids].sort().forEach(n => { const o = document.createElement('option'); o.value = n; o.textContent = n || '(非公開)'; s.append(o); });
+  if (![...s.options].some(o => o.value === V.ssid)) V.ssid = '*'; s.value = V.ssid;
+  const b = $('#vBssid'); b.replaceChildren(); const b0 = document.createElement('option'); b0.value = '*'; b0.textContent = 'すべて(最強のAP)'; b.append(b0);
+  const bs = new Map(); P.points.forEach(p => p.aps && Object.entries(p.aps).forEach(([k, a]) => { if (V.ssid === '*' || a.ssid === V.ssid) bs.set(k, a); }));
+  [...bs.entries()].sort().forEach(([k, a]) => { const o = document.createElement('option'); o.value = k; o.textContent = `${k.slice(-8)}  ch${a.ch}`; b.append(o); });
+  if (![...b.options].some(o => o.value === V.bssid)) V.bssid = '*'; b.value = V.bssid;
+  $('#vBand').value = V.band; $('#target').value = V.target; $('#calibDb').value = V.calib; $('#vMode').value = V.mode; $('#cmpSrc').value = V.cmpSrc; $('#cmpMode').value = V.cmp; $('#radius').value = V.radius; $('#opacity').value = V.opacity; $('#showVal').checked = V.showVal;
+  renderLegend(); renderSummary();
+}
+function viewChanged() { const V = P.view; V.ssid = $('#vSsid').value; V.bssid = $('#vBssid').value; V.band = $('#vBand').value; V.target = +$('#target').value || -67; V.calib = +$('#calibDb').value || 0; V.mode = $('#vMode').value; V.cmpSrc = $('#cmpSrc').value; V.cmp = $('#cmpMode').value; V.radius = +$('#radius').value || 8; V.opacity = +$('#opacity').value; V.showVal = $('#showVal').checked; afterChange(true); refreshViewSelects(); }
+['vSsid', 'vBssid', 'vBand', 'target', 'calibDb', 'vMode', 'cmpSrc', 'cmpMode', 'radius', 'opacity', 'showVal'].forEach(id => $('#' + id).addEventListener('change', viewChanged));
+$('#opacity').addEventListener('input', () => { P.view.opacity = +$('#opacity').value; draw(); });
+function renderLegend() {
+  const T = P.view.target, diff = P.view.cmp === 'diff', box = $('#legend'); box.replaceChildren();
+  const rng = diff ? ['+6 以上', '+2 〜 +6', '−2 〜 +2', '−6 〜 −2', '−6 未満'] : [`${T + 10} 以上`, `${T} 〜 ${T + 10}`, `${T - 6} 〜 ${T}`, `${T - 14} 〜 ${T - 6}`, `${T - 14} 未満`];
+  (diff ? DCLASS : CLASS).forEach((c, i) => { const s = document.createElement('span'), sw = document.createElement('i'); sw.style.background = c.c; s.append(sw, `${c.n}  ${rng[i]} ${diff ? 'dB' : 'dBm'}`); box.append(s); });
+}
+function renderSummary() {
+  const V = P.view, T = V.target, el = $('#summary'), vals = P.points.map(pointValue).filter(v => v !== null);
+  let t = vals.length ? `測定点 ${vals.length} か所のうち、目標(${T} dBm)以上は ${vals.filter(v => v >= T).length} か所。最小 ${Math.round(Math.min(...vals))} / 最大 ${Math.round(Math.max(...vals))} dBm。` : '';
+  if (V.cmp === 'diff') {
+    const ds = P.points.map(p => { const v = pointValue(p), b = baseValueNear(p); return v !== null && b !== null ? v - b : null; }).filter(d => d !== null);
+    t = ds.length ? `比べられた測定点 ${ds.length} か所: 平均 ${fmtD(ds.reduce((a, b) => a + b, 0) / ds.length)} dB(改善 ${ds.filter(d => d >= 2).length} / 悪化 ${ds.filter(d => d <= -2).length} か所)。` : '比べられる測定点がありません(比較元と同じ位置で測ってください)。';
+    if (heatStats && heatStats.overlap) { const s = heatStats, pc = n => Math.round(n / s.overlap * 100); t += ` 図面上の比較できる範囲では、目標未満の割合が ${pc(s.belowB)}% → ${pc(s.belowN)}%、平均 ${fmtD(s.sum / s.overlap)} dB。`; }
+  }
+  el.textContent = t;
+  const bi = $('#baseInfo');
+  if (V.cmpSrc === 'history') bi.textContent = '各測定点の1つ前の測定と比べます(測り直した点だけ表示されます)。';
+  else if (P.base) { const mis = Math.abs(P.base.W - P.W) > P.W * 0.02 || Math.abs(P.base.H - P.H) > P.H * 0.02; bi.textContent = `比較元: ${P.base.name}(${P.base.points.length}点)` + (mis ? ' 図面の大きさが違います。同じ図面・同じ縮尺か確認してください。' : ''); }
+  else bi.textContent = '比較元がありません。「いまの結果を比較元に固定」か、保存したファイルを開いてください。';
+}
+
+// 測定点の一覧
+function renderPointList() {
+  const box = $('#pointList'); box.replaceChildren();
+  if (!P.points.length) { const p = document.createElement('div'); p.className = 'hint'; p.textContent = 'まだ測定点がありません。'; box.append(p); return; }
+  P.points.forEach(pt => {
+    const it = document.createElement('div'); it.className = 'it' + (pt.id === selPoint ? ' sel' : ''); it.onclick = () => { selPoint = pt.id; renderPointList(); draw(); };
+    const t = document.createElement('span'); t.className = 'grow'; const v = pointValue(pt); t.textContent = `${pt.label}  ${v === null ? '(未測定)' : Math.round(v) + ' dBm'}`;
+    const sub = document.createElement('span'); sub.className = 'sub'; sub.textContent = pt.aps ? `${Object.keys(pt.aps).length}台` + (pt.history && pt.history.length ? ` 履歴${pt.history.length}` : '') : '';
+    const rn = document.createElement('button'); rn.className = 'small'; rn.textContent = '名前'; rn.onclick = async e => { e.stopPropagation(); const n = await ask('測定点の名前', pt.label); if (n) { pt.label = n; afterChange(true); } };
+    const re = document.createElement('button'); re.className = 'small'; re.textContent = '再測定'; re.onclick = e => { e.stopPropagation(); measureAt(pt); };
+    const de = document.createElement('button'); de.className = 'small'; de.textContent = '削除'; de.onclick = e => { e.stopPropagation(); removePoint(pt); };
+    it.append(t, sub, rn, re, de); box.append(it);
+  });
+}
+
+function renderHist() {
+  const box = $('#histList'); box.replaceChildren(); const pt = pointById(selPoint);
+  if (!pt) { const p = document.createElement('div'); p.className = 'hint'; p.textContent = '測定点を選ぶと表示します。'; box.append(p); return; }
+  const rows = [{ t: pt.t, aps: pt.aps, now: true }, ...(pt.history || []).slice().reverse()];
+  rows.forEach(r => { if (!r.aps) return; const v = pointValue({ aps: r.aps }), it = document.createElement('div'); it.className = 'it'; it.textContent = `${r.t ? new Date(r.t).toLocaleString('ja-JP') : '—'}  ${v === null ? '(該当なし)' : Math.round(v) + ' dBm'}${r.now ? '  最新' : ''}`; box.append(it); });
+}
+function afterChange(heat) { heatDirty = true; renderHist(); renderPointList(); renderSummary(); draw(); scheduleSave(); if (heat) { /* 再計算は描画時 */ } }
+
+// ================= 比較元 =================
+function fixBase() {
+  const pts = P.points.filter(p => p.aps); if (!pts.length) { setStatus('比較元にできる測定がありません。'); return; }
+  P.base = { name: '固定した測定(' + new Date().toLocaleString('ja-JP') + ')', W: P.W, H: P.H, t: Date.now(), points: pts.map(p => ({ x: p.x, y: p.y, label: p.label, aps: JSON.parse(JSON.stringify(p.aps)) })), aps: P.objects.filter(o => o.type === 'ap').map(o => ({ x: o.x, y: o.y, name: o.name })) };
+  P.view.cmpSrc = 'base'; afterChange(true); refreshViewSelects(); setStatus(`いまの結果(${pts.length}点とAPの位置)を比較元に固定しました。APを動かしたり設定を変えてから、同じ点を測り直し、「表示」を「差分」にしてください。`);
+}
+$('#baseFix').onclick = fixBase;
+$('#baseOpen').onclick = () => $('#fileBase').click();
+$('#fileBase').onchange = async () => {
+  const f = $('#fileBase').files[0]; $('#fileBase').value = ''; if (!f) return;
+  try {
+    const o = JSON.parse(await f.text()); const pts = (o.points || []).filter(p => p.aps); if (!pts.length) { toast('そのファイルに測定結果がありません。'); return; }
+    P.base = { name: f.name, W: o.W, H: o.H, t: Date.now(), points: pts.map(p => ({ x: p.x, y: p.y, label: p.label, aps: p.aps })), aps: (o.objects || []).filter(x => x.type === 'ap').map(x => ({ x: x.x, y: x.y, name: x.name })) };
+    P.view.cmpSrc = 'base'; P.view.cmp = 'diff'; afterChange(true); refreshViewSelects(); setStatus('比較元を読み込みました。差分を表示します。');
+  } catch { toast('ファイルを読み込めませんでした。'); }
+};
+$('#baseClear').onclick = () => { P.base = null; P.view.cmp = 'now'; afterChange(true); refreshViewSelects(); };
+
+// ================= 保存・読み込み =================
+let saveTimer = null;
+function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(autosave, 800); }
+function packSeen() { P.seenList = [...seen].map(([k, a]) => [k, { ssid: a.ssid, ch: a.ch, w: a.w, rssi: a.rssi }]); }
+function autosave() { try { packSeen(); const s = JSON.stringify(P); if (s.length < 4.5e6) localStorage.setItem('c5heatmap.autosave', s); else localStorage.setItem('c5heatmap.autosave', JSON.stringify({ ...P, image: null })); } catch {} }
+function stamp() { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; }
+function download(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
+async function loadProject(obj) {
+  const base = newProject(); P = { ...base, ...obj, view: { ...base.view, ...(obj.view || {}) }, sel: { ssids: [], ...(obj.sel || {}) } };
+  P.objects = P.objects || []; P.points = P.points || []; P.seq = Math.max(P.seq || 0, ...P.points.map(p => p.id || 0));
+  imgEl = null; if (P.image) { const im = new Image(); await new Promise(res => { im.onload = res; im.onerror = res; im.src = P.image; }); if (im.naturalWidth) imgEl = im; }
+  if (Array.isArray(P.seenList)) seen = new Map(P.seenList.map(([k, a]) => [k, { ...a, ts: 0 }]));
+  selPoint = null; undoStack = []; $('#snap').checked = P.snap; $('#grid').checked = P.grid;
+  heatDirty = true; refreshSizeInputs(); refreshViewSelects(); renderSsidList(); renderPointList(); fitView();
+}
+$('#save').onclick = () => { packSeen(); download(new Blob([JSON.stringify(P)], { type: 'application/json' }), 'wifi-heatmap-' + stamp() + '.json'); };
+$('#open').onclick = () => $('#fileProject').click();
+$('#fileProject').onchange = async () => { const f = $('#fileProject').files[0]; $('#fileProject').value = ''; if (!f) return; try { await loadProject(JSON.parse(await f.text())); setStatus('読み込みました。'); } catch { toast('ファイルを読み込めませんでした。'); } };
+$('#csv').onclick = () => {
+  const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"', safe = v => /^[=+\-@\t\r]/.test(String(v)) ? "'" + v : v;
+  const rows = [['測定点', 'x(m)', 'y(m)', '世代(0=最新)', '測定日時', '測定秒', 'SSID', 'BSSID', 'ch', '幅(MHz)', '回数', '平均(dBm)', '最大(dBm)']];
+  P.points.forEach(p => { const gens = [{ t: p.t, dur: p.dur, aps: p.aps }, ...(p.history || []).slice().reverse()]; gens.forEach((g, gi) => g.aps && Object.entries(g.aps).forEach(([k, a]) => rows.push([safe(p.label), p.x.toFixed(2), p.y.toFixed(2), gi, g.t ? new Date(g.t).toLocaleString('ja-JP') : '', g.dur || '', safe(a.ssid), k, a.ch, a.w || '', a.n, a.avg, a.max]))); });
+  (P.objects.filter(o => o.type === 'ap')).forEach(o => rows.push([safe('AP: ' + (o.name || '')), o.x.toFixed(2), o.y.toFixed(2), '', '', '', '', '', '', '', '', '', '']));
+  download(new Blob(['\ufeff' + rows.map(r => r.map(q).join(',')).join('\r\n')], { type: 'text/csv' }), 'wifi-heatmap-' + stamp() + '.csv');
+};
+$('#png').onclick = () => { render(); cv.toBlob(b => download(b, 'wifi-heatmap-' + stamp() + '.png')); };
+
+// ================= 起動 =================
+window.addEventListener('resize', () => fitView());
+renderSsidList(); renderPointList(); renderLegend(); refreshSizeInputs(); setTool('measure'); fitView();
+try { const s = localStorage.getItem('c5heatmap.autosave'); if (s && JSON.parse(s).points?.length) { const b = document.createElement('button'); b.textContent = '前回の作業を復元'; b.onclick = async () => { await loadProject(JSON.parse(s)); b.remove(); }; $('.tools').prepend(b); } } catch {}
+if (!('serial' in navigator)) toast('このブラウザは Web Serial に対応していません。Chrome か Edge で開いてください(図面と表示だけなら使えます)。');
+window.__hm = { get heatStats() { return heatStats; }, markerList, get P() { return P; }, get heat() { return heat; }, pointValue, loadProject, measureAt, devices, seen: () => seen, view: () => view, toScreen };
+</script>
+</body>
+</html>

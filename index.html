@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: MIT
+     Copyright (c) 2026 宮内工務店 -->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C5 Wi-Fi スコープ</title>
+<style>
+  :root { --paper: #eceff0; --panel: #f9fafa; --ink: #1c2a30; --mute: #66777e; --line: #d3dadd; --b5: #2f4fb3; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 28px clamp(14px, 4vw, 40px) 48px; background: var(--paper); color: var(--ink);
+    font-family: "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif; line-height: 1.7; }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 4px; letter-spacing: .02em; }
+  .lead { color: var(--mute); margin: 0 0 22px; }
+  .cards { display: flex; flex-direction: column; gap: 10px; }
+  a.card { display: block; background: var(--panel); padding: 14px 18px; color: inherit; text-decoration: none; border-left: 4px solid var(--ink); }
+  a.card:hover { background: #fff; }
+  a.card b { display: block; font-size: 17px; }
+  a.card span { color: var(--mute); font-size: 14px; }
+  h2 { font-size: 16px; margin: 26px 0 6px; }
+  p, li { font-size: 14px; }
+  ul { padding-left: 1.3em; margin: 4px 0; }
+  a { color: var(--b5); }
+  .note { color: var(--mute); font-size: 13px; margin-top: 26px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>C5 Wi-Fi スコープ</h1>
+  <p class="lead">ESP32-C5(M5Stamp C5)を使って、学校などのWi-Fi環境を見える化するツールです。どちらもブラウザの中だけで動きます。</p>
+
+  <div class="cards">
+    <a class="card" href="web/scope.html"><b>チャンネル占有・AP一覧</b><span>2.4GHz / 5GHz のAP、チャンネルの混み具合、チャンネル幅、おすすめチャンネル</span></a>
+    <a class="card" href="web/heatmap.html" style="border-left-color:#1f7a6d"><b>Wi-Fi ヒートマップ</b><span>図面(画像、または作図)の上で、点ごとに電波の強さを測って色分け。移設前後の比較もできます</span></a>
+  </div>
+
+  <h2>使う前に</h2>
+  <ul>
+    <li>パソコンの Chrome または Edge で開いてください(USB接続に Web Serial を使います)。</li>
+    <li>ボードに <code>firmware/c5_wifi_scope</code> のスケッチを書き込みます。手順はリポジトリの README にあります(動作確認は M5StampC5 で行っています)。</li>
+    <li>測定データや図面は、ブラウザの中だけで扱います。サーバーには送られません。</li>
+  </ul>
+
+  <p class="note">配布のみで、サポートは行いません。MIT ライセンスで、自由に改変・再配布できます。M5Stack 社とは関係ありません。</p>
+</main>
+</body>
+</html>

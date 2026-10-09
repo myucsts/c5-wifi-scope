@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: MIT
+     Copyright (c) 2026 宮内工務店 -->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wi-Fi スペクトラムスコープ</title>
+<style>
+  :root {
+    --paper: #eceff0;
+    --panel: #f9fafa;
+    --ink: #1c2a30;
+    --mute: #66777e;
+    --line: #d3dadd;
+    --b24: #1f7a6d;
+    --b5: #2f4fb3;
+    --warn: #b3412a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 20px clamp(12px, 3vw, 32px) 40px;
+    background: var(--paper); color: var(--ink);
+    font-family: "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+    font-variant-numeric: tabular-nums; line-height: 1.6;
+  }
+  header { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto 14px; }
+  h1 { font-size: 20px; margin: 0; font-weight: 700; letter-spacing: .02em; }
+  h2 { font-size: 16px; margin: 0; font-weight: 700; }
+  .tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button, select { font: inherit; color: inherit; }
+  button { cursor: pointer; border: 1px solid var(--ink); background: transparent; padding: 5px 14px; border-radius: 3px; }
+  button:hover { background: #dfe5e7; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--b5); outline-offset: 2px; }
+  button.primary { background: var(--ink); color: var(--paper); }
+  button.primary:hover { background: #2f4048; }
+  .seg { display: inline-flex; border: 1px solid var(--ink); border-radius: 3px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; padding: 5px 12px; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+  select { border: 1px solid var(--line); background: var(--panel); border-radius: 3px; padding: 3px 6px; }
+
+  #devices { max-width: 1100px; margin: 0 auto 14px; display: flex; flex-direction: column; gap: 6px; }
+  .dev { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; padding: 8px 12px; background: var(--panel); border-left: 4px solid var(--b24); }
+  .dev .id { font-weight: 700; min-width: 7em; }
+  .dev label { color: var(--mute); font-size: 14px; display: inline-flex; gap: 6px; align-items: center; }
+  .dev .role { color: var(--ink); min-width: 8em; }
+  .dev button { margin-left: auto; padding: 2px 10px; font-size: 14px; }
+  .dev button + button { margin-left: 0; }
+  .auto { font-size: 14px; display: inline-flex; gap: 6px; align-items: center; }
+
+  main { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+  section { background: var(--panel); padding: 14px 16px 10px; }
+  .sec-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 16px; margin-bottom: 6px; }
+  .sec-head small { color: var(--mute); font-size: 13px; }
+  canvas { display: block; width: 100%; }
+  #empty { position: relative; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font-weight: 700; color: var(--mute); border-bottom: 1px solid var(--ink); padding: 4px 8px; }
+  td { padding: 4px 8px; border-bottom: 1px solid var(--line); }
+  td.num, th.num { text-align: right; }
+  .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 8px; border-radius: 50%; vertical-align: baseline; }
+  .tablewrap { overflow-x: auto; max-height: 340px; overflow-y: auto; }
+  .row { max-width: 1100px; margin: 0 auto 14px; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+  input[type="text"] { font: inherit; border: 1px solid var(--line); background: var(--panel); border-radius: 3px; padding: 4px 8px; flex: 1 1 260px; max-width: 420px; }
+  #pause[aria-pressed="true"] { background: var(--warn); border-color: var(--warn); color: #fff; }
+  .rec { margin: 8px 0 4px; font-size: 14px; }
+  .note { max-width: 1100px; margin: 18px auto 0; color: var(--mute); font-size: 13px; }
+  #msg { max-width: 1100px; margin: 0 auto 10px; color: var(--warn); min-height: 1.4em; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Wi-Fi スペクトラムスコープ</h1>
+  <div class="tools">
+    <div class="seg" id="metric" role="group" aria-label="棒グラフの指標">
+      <button data-m="pps" aria-pressed="true">パケット数</button>
+      <button data-m="bps" aria-pressed="false">データ量</button>
+    </div>
+    <label class="auto"><input type="checkbox" id="auto" checked>役割を自動で割り当て</label>
+    <button class="primary" id="connect">ボードを接続</button>
+  </div>
+</header>
+
+<div class="row">
+  <input type="text" id="mine" placeholder="自校のSSID(部分一致・カンマ区切り)" aria-label="強調するSSID">
+  <button id="pause" aria-pressed="false">一時停止</button>
+  <button id="csv">AP一覧をCSV保存</button>
+  <button id="png">グラフを画像保存</button>
+</div>
+
+<div id="msg" role="status"></div>
+<div id="devices"></div>
+
+<main>
+  <section>
+    <div class="sec-head">
+      <h2>2.4 GHz</h2>
+      <small>山: 検出したAP(縦軸 dBm) / 棒: そのチャンネルで受信できた量</small>
+    </div>
+    <canvas id="m24"></canvas>
+    <canvas id="b24"></canvas>
+    <canvas id="w24"></canvas>
+    <p class="rec" id="rec24"></p>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>5 GHz</h2>
+      <small>20MHz幅のチャンネルを等間隔に並べています(隣り合わない部分は空白で区切り)</small>
+    </div>
+    <canvas id="m5"></canvas>
+    <canvas id="b5"></canvas>
+    <canvas id="w5"></canvas>
+    <p class="rec" id="rec5"></p>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>検出したAP</h2><small id="apcount"></small></div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>SSID</th><th>帯域</th><th class="num">ch</th><th class="num">幅</th><th class="num">RSSI</th><th>暗号化</th><th>BSSID</th></tr></thead>
+        <tbody id="aptable"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<p class="note">
+  棒グラフはデコードできたフレームの量で、電波エネルギーそのものではありません。山の幅はビーコンから読み取ったチャンネル幅(20/40/80/160MHz)で、広い山の丸い点がプライマリチャンネルです。破線の山は幅を取得できていないAP(20MHzで仮表示)です。<br>
+  棒の細い線は直近のピーク、その下の濃淡は過去100秒の履歴(上が最新)です。
+  おすすめは「APの強さ」と「受信量」を、APが占有する幅も含めて足した目安です。2.4GHzは1/6/11、5GHzはDFSを使わない36–48と149–165から選びます。幅の読み取りはHT/VHT情報で、Wi-Fi 6の6GHz専用の情報は対象外です。
+  Chrome / Edge で開いてください(Web Serial API が必要です)。
+</p>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const FONT = '"BIZ UDPGothic","Hiragino Sans","Yu Gothic UI","Meiryo",system-ui,sans-serif';
+const INK = '#1c2a30', MUTE = '#66777e', GRID = '#dde3e5';
+const BAND_COLOR = { '24': '#1f7a6d', '5': '#2f4fb3' };
+const AP_COLORS = ['#2a6f97', '#2d8a5b', '#b5651d', '#7b4ea3', '#c0392b', '#13838f', '#8a8a1f', '#d1477a'];
+const AUTH = { 0: 'オープン', 1: 'WEP', 2: 'WPA', 3: 'WPA2', 4: 'WPA/WPA2', 5: 'WPA2-Ent', 6: 'WPA3', 7: 'WPA2/WPA3' };
+const STALE_CH = 45000, STALE_AP = 60000;
+const ROLE_COLOR = { '2': '#1f7a6d', '5': '#2f4fb3', 'n': '#b57a1d', 'a': '#1c2a30' };
+const ROLE_NAME = { '2': '2.4GHz担当', '5': '5GHz担当', 'n': 'AP検出専用', 'a': '2.4+5GHz' };
+
+// ---------- 状態 ----------
+const devices = new Set();
+const chStat = {};            // ch -> {sp, sb, ts}
+const aps = new Map();        // bssid -> {...}
+let metric = 'pps';
+let paused = false, pausedAt = 0;
+const nowT = () => paused ? pausedAt : Date.now();
+const peaks = {};
+const HIST_N = 100;
+const hist = { '24': [], '5': [] };
+function mineList() { return $('#mine').value.split(/[,、，]/).map(x => x.trim().toLowerCase()).filter(Boolean); }
+function isMine(a, list) { return list.length > 0 && list.some(k => (a.ssid || '').toLowerCase().includes(k)); }
+const scale = { '24': 60, '5': 60 };
+
+// ---------- レイアウト(周波数軸) ----------
+function makeLayout(kind) {
+  if (kind === '24') {
+    const lo = 2396, hi = 2490, fx = f => (f - lo) / (hi - lo);
+    return {
+      chs: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+      x: ch => fx(2407 + 5 * ch),
+      hw: 11 / (hi - lo), barW: 4 / (hi - lo), groups: [],
+      // APの占有範囲(20MHz: 中心±11MHz / 40MHz: 中心±21MHz)。cx は山の中心
+      span(a) {
+        let c = a.ch;
+        if (a.w === 40 && a.c) c = a.c;
+        const f = 2407 + 5 * c, h = a.w === 40 ? 21 : 11;
+        return { xl: fx(f - h), xr: fx(f + h), s: 11 / (hi - lo), cx: fx(f) };
+      }
+    };
+  }
+  const groups = [
+    [36, 40, 44, 48, 52, 56, 60, 64],
+    [100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144],
+    [149, 153, 157, 161, 165]
+  ];
+  const map = {}, start = []; let pos = 0; const GAP = 0.9;
+  groups.forEach((g, i) => { if (i) pos += GAP; start.push(pos); g.forEach(c => { map[c] = pos + 0.5; pos += 1; }); });
+  const total = pos;
+  // チャンネル番号(5MHz刻み。中心チャンネルも可)をスロット位置に変換: 1スロット=20MHz
+  const slotPos = c => {
+    for (let i = 0; i < groups.length; i++) {
+      const g = groups[i];
+      if (c >= g[0] - 2 && c <= g[g.length - 1] + 2) return start[i] + (c - g[0]) / 4 + 0.5;
+    }
+    return NaN;
+  };
+  return {
+    chs: groups.flat(), x: ch => map[ch] === undefined ? NaN : map[ch] / total,
+    hw: 0.55 / total, barW: 0.7 / total, groups,
+    span(a) {
+      const n = (a.w || 20) / 20, cc = (a.w > 20 && a.c) ? a.c : a.ch, p = slotPos(cc);
+      if (!Number.isFinite(p)) return null;
+      return { xl: (p - n / 2) / total, xr: (p + n / 2) / total, s: 0.5 / total, cx: p / total };
+    }
+  };
+}
+const LAYOUT = { '24': makeLayout('24'), '5': makeLayout('5') };
+
+// ---------- 受信処理 ----------
+function onLine(dev, line) {
+  line = line.trim();
+  if (line[0] !== '{') return;
+  let m; try { m = JSON.parse(line); } catch { return; }
+  const now = Date.now();
+  if (paused && m.t !== 'hello') return;
+  if (m.t === 'hello') {
+    const first = !dev.identified;
+    dev.id = m.id; dev.identified = true;
+    syncChip(dev, m);
+    if (first) assignRoles();
+  } else if (m.t === 'ch') {
+    if (!m.ms) return;
+    const pps = m.n * 1000 / m.ms, bps = m.b * 1000 / m.ms;
+    const prev = chStat[m.ch];
+    const fresh = prev && now - prev.ts < STALE_CH;
+    chStat[m.ch] = { sp: fresh ? prev.sp * 0.6 + pps * 0.4 : pps, sb: fresh ? prev.sb * 0.6 + bps * 0.4 : bps, ts: now };
+  } else if (m.t === 'ap') {
+    // ビーコン由来(幅あり)とスキャン由来(暗号化あり)をBSSIDで合成する
+    const key = String(m.bssid).toUpperCase(), prev = aps.get(key) || {};
+    const next = { ...prev, bssid: key, ch: m.ch, rssi: m.rssi, ts: now };
+    if (m.ssid) next.ssid = m.ssid; else if (next.ssid === undefined) next.ssid = '';
+    if (m.auth !== undefined) next.auth = m.auth;
+    if (m.w !== undefined) { next.w = m.w; next.c = m.c; }
+    else if (prev.ch !== undefined && prev.ch !== m.ch) { delete next.w; delete next.c; }
+    aps.set(key, next);
+  }
+}
+
+// ---------- 接続 ----------
+const send = (dev, line) => dev.writer.write(line + '\n').catch(() => {});
+
+async function connect() {
+  if (!('serial' in navigator)) { toast('このブラウザは Web Serial に対応していません。Chrome か Edge で開いてください。'); return; }
+  let port;
+  try { port = await navigator.serial.requestPort(); } catch { return; }
+  try { await port.open({ baudRate: 115200 }); }
+  catch (e) { toast('ポートを開けませんでした: ' + e.message + '(他のアプリが使用中の可能性があります)'); return; }
+  toast('');
+  try { await port.setSignals({ dataTerminalReady: false, requestToSend: false }); } catch {}
+
+  const dev = { port, id: '----', closed: false };
+  const dec = new TextDecoderStream();
+  const enc = new TextEncoderStream();
+  dev.pipes = [port.readable.pipeTo(dec.writable).catch(() => {}), enc.readable.pipeTo(port.writable).catch(() => {})];
+  dev.reader = dec.readable.getReader();
+  dev.writer = enc.writable.getWriter();
+  devices.add(dev);
+  addChip(dev);
+  setTimeout(() => send(dev, 'hello'), 1500);
+  readLoop(dev);
+}
+
+async function readLoop(dev) {
+  let buf = '';
+  try {
+    for (;;) {
+      const { value, done } = await dev.reader.read();
+      if (done) break;
+      buf += value;
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) { onLine(dev, buf.slice(0, i)); buf = buf.slice(i + 1); }
+      if (buf.length > 4000) buf = '';
+    }
+  } catch {}
+  cleanup(dev);
+}
+
+async function disconnect(dev) {
+  try { await dev.reader.cancel(); } catch {}
+  try { await dev.writer.close(); } catch {}
+  await Promise.all(dev.pipes);
+  try { await dev.port.close(); } catch {}
+  cleanup(dev);
+}
+
+function cleanup(dev) {
+  if (dev.closed) return;
+  dev.closed = true;
+  devices.delete(dev);
+  dev.el && dev.el.remove();
+  assignRoles();
+}
+
+// ---------- 役割の自動割り当て(ID順に決まるので、接続順に関係なく毎回同じ配役) ----------
+function layoutFor(n) {
+  if (n <= 1) return [['a', 1]];
+  if (n === 2) return [['2', 1], ['5', 0]];
+  return [['2', 0], ['5', 0], ['n', 1]];
+}
+function assignRoles() {
+  if (!$('#auto').checked) return;
+  const list = [...devices].filter(d => d.identified).sort((a, b) => a.id < b.id ? -1 : 1);
+  const plan = layoutFor(list.length);
+  list.forEach((d, i) => {
+    d.spare = i >= plan.length;
+    if (d.spare) { refreshChip(d); return; }
+    const [band, scan] = plan[i];
+    if (!d.cur || d.cur.band !== band) send(d, 'band ' + band);
+    if (!d.cur || !!d.cur.scan !== !!scan) send(d, 'scan ' + scan);
+  });
+}
+
+function toast(t) { $('#msg').textContent = t; }
+
+// ---------- ボードごとの操作パネル ----------
+function opt(v, label) { const o = document.createElement('option'); o.value = v; o.textContent = label; return o; }
+
+function addChip(dev) {
+  const el = document.createElement('div'); el.className = 'dev';
+  const id = document.createElement('span'); id.className = 'id'; id.textContent = 'C5 ----';
+  const role = document.createElement('span'); role.className = 'role'; role.textContent = '確認中…';
+
+  const lb = document.createElement('label'); lb.append('帯域');
+  const sb = document.createElement('select');
+  sb.append(opt('a', '2.4 + 5 GHz'), opt('2', '2.4 GHzのみ'), opt('5', '5 GHzのみ'), opt('n', 'APスキャン専用'));
+  sb.onchange = () => { $('#auto').checked = false; send(dev, 'band ' + sb.value); if (sb.value === 'n') cb.checked = true; };
+  lb.append(sb);
+
+  const ld = document.createElement('label'); ld.append('1chの滞在');
+  const sd = document.createElement('select');
+  [60, 120, 250, 500].forEach(v => sd.append(opt(v, v + ' ms')));
+  sd.value = 120;
+  sd.onchange = () => send(dev, 'dwell ' + sd.value);
+  ld.append(sd);
+
+  const ls = document.createElement('label');
+  const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = true;
+  cb.onchange = () => { $('#auto').checked = false; send(dev, 'scan ' + (cb.checked ? 1 : 0)); };
+  ls.append(cb, 'AP検出');
+
+  const bi = document.createElement('button'); bi.textContent = '光らせる'; bi.onclick = () => send(dev, 'ident');
+  const bt = document.createElement('button'); bt.textContent = '切断'; bt.onclick = () => disconnect(dev);
+
+  el.append(id, role, lb, ld, ls, bi, bt);
+  dev.el = el; dev.ui = { id, role, sb, sd, cb };
+  $('#devices').append(el);
+}
+
+function syncChip(dev, m) {
+  if (!dev.ui) return;
+  dev.ui.id.textContent = 'C5 ' + m.id;
+  dev.cur = { band: m.band, scan: m.scan };
+  refreshChip(dev);
+  dev.ui.sb.value = m.band;
+  if ([...dev.ui.sd.options].some(o => +o.value === m.dwell)) dev.ui.sd.value = m.dwell;
+  dev.ui.cb.checked = !!m.scan;
+}
+
+function refreshChip(dev) {
+  if (!dev.ui || !dev.cur) return;
+  dev.ui.role.textContent = ROLE_NAME[dev.cur.band] + (dev.spare ? '(予備)' : '');
+  dev.el.style.borderLeftColor = ROLE_COLOR[dev.cur.band];
+}
+
+// ---------- 描画 ----------
+function fit(c, h) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = c.parentElement.clientWidth - 32;
+  c.style.width = w + 'px'; c.style.height = h + 'px';
+  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { g, w, h };
+}
+
+const ML = 40, MR = 10;
+function hash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
+
+function drawChannelAxis(g, L, X, y, w, withLabels) {
+  const slot = (w - ML - MR) * (L.chs.length > 14 ? 1 / 27 : 1 / 13);
+  const every = slot < 20 ? 2 : 1;
+  g.font = '11px ' + FONT; g.textAlign = 'center'; g.textBaseline = 'top'; g.fillStyle = MUTE;
+  L.chs.forEach((ch, i) => { if (withLabels && i % every === 0) g.fillText(ch, X(ch), y + 4); });
+}
+
+function drawMountains(kind) {
+  const L = LAYOUT[kind], { g, w, h } = fit($('#m' + kind), 250);
+  const mt = 8, mb = 22, pw = w - ML - MR, ph = h - mt - mb;
+  const X = ch => ML + L.x(ch) * pw, Y = r => mt + (-30 - r) / 70 * ph;
+  g.clearRect(0, 0, w, h);
+
+  g.font = '11px ' + FONT; g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (let r = -30; r >= -100; r -= 10) {
+    const y = Y(r);
+    g.strokeStyle = r === -100 ? INK : GRID; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(ML, y); g.lineTo(w - MR, y); g.stroke();
+    g.fillStyle = MUTE; g.fillText(r, ML - 6, y);
+  }
+  g.strokeStyle = GRID;
+  L.chs.forEach(ch => { g.beginPath(); g.moveTo(X(ch), mt); g.lineTo(X(ch), mt + ph); g.stroke(); });
+  drawChannelAxis(g, L, X, mt + ph, w, true);
+
+  if (kind === '5') {
+    g.fillStyle = MUTE; g.textAlign = 'center'; g.textBaseline = 'top'; g.font = '11px ' + FONT;
+    const lab = (a, b, t) => g.fillText(t, (X(a) + X(b)) / 2, mt + 2);
+    lab(36, 48, 'W52'); lab(52, 64, 'W53'); lab(100, 144, 'W56(DFS)'); lab(149, 165, '149–165');
+  }
+
+  const now = nowT(), mine = mineList();
+  const list = [...aps.values()].filter(a => now - a.ts < STALE_AP && (kind === '24') === (a.ch <= 14) && Number.isFinite(L.x(a.ch)));
+  list.sort((a, b) => a.rssi - b.rssi);
+  const base = Y(-100);
+  g.save(); g.beginPath(); g.rect(ML, mt, pw, ph + 1); g.clip();
+  list.forEach(a => {
+    const sp = L.span(a); if (!sp) return;
+    const hit = isMine(a, mine), dim = mine.length > 0 && !hit;
+    const xl = ML + sp.xl * pw, xr = ML + sp.xr * pw, sl = Math.min(sp.s * pw, (xr - xl) / 2);
+    const top = Y(Math.max(a.rssi, -100)), col = AP_COLORS[hash(a.bssid) % AP_COLORS.length];
+    g.beginPath();
+    g.moveTo(xl, base);
+    g.bezierCurveTo(xl + sl * 0.45, base, xl + sl * 0.5, top, xl + sl, top);
+    g.lineTo(xr - sl, top);
+    g.bezierCurveTo(xr - sl * 0.5, top, xr - sl * 0.45, base, xr, base);
+    g.closePath();
+    g.globalAlpha = dim ? 0.04 : hit ? 0.3 : 0.16; g.fillStyle = col; g.fill();
+    g.globalAlpha = dim ? 0.3 : 1; g.strokeStyle = col; g.lineWidth = hit ? 2.8 : 1.5;
+    g.setLineDash(a.w ? [] : [4, 3]); g.stroke(); g.setLineDash([]);
+    g.globalAlpha = dim ? 0.3 : 1;
+    if (a.w > 20) { g.fillStyle = col; g.beginPath(); g.arc(X(a.ch), top, 3, 0, 6.2832); g.fill(); }   // 広い山のプライマリch
+    g.globalAlpha = 1;
+  });
+  g.restore();
+  // ラベル(自校SSIDを優先、次に強い順。重なったら省略)
+  const placed = [];
+  g.textAlign = 'center'; g.textBaseline = 'bottom';
+  [...list].reverse().sort((a, b) => Number(isMine(b, mine)) - Number(isMine(a, mine))).forEach(a => {
+    const hit = isMine(a, mine), sp = L.span(a);
+    if (!sp || (mine.length && !hit)) return;
+    g.font = (hit ? 'bold 12px ' : '11px ') + FONT;
+    const t = (a.ssid || '(非公開)') + (a.w > 20 ? ` ${a.w}` : ''), tw = g.measureText(t).width, y = Y(Math.max(a.rssi, -100)) - 3;
+    const cx = Math.min(Math.max(ML + sp.cx * pw, ML + tw / 2), w - MR - tw / 2);
+    const r = { x0: cx - tw / 2, x1: cx + tw / 2, y0: y - 13, y1: y };
+    if (placed.some(p => r.x0 < p.x1 && r.x1 > p.x0 && r.y0 < p.y1 && r.y1 > p.y0)) return;
+    placed.push(r);
+    g.fillStyle = INK; g.fillText(t, cx, y);
+  });
+
+  if (!devices.size) {
+    g.fillStyle = MUTE; g.font = '14px ' + FONT; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('「ボードを接続」で M5Stamp C5 を選ぶと、ここに表示されます', ML + pw / 2, mt + ph / 2);
+  }
+}
+
+function fmt(v) {
+  if (metric === 'pps') return v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(Math.round(v));
+  const kb = v / 1024; return kb >= 100 ? String(Math.round(kb)) : kb.toFixed(1);
+}
+
+function drawBars(kind) {
+  const L = LAYOUT[kind], { g, w, h } = fit($('#b' + kind), 110);
+  const mt = 14, mb = 22, pw = w - ML - MR, ph = h - mt - mb;
+  const X = ch => ML + L.x(ch) * pw;
+  g.clearRect(0, 0, w, h);
+  const now = nowT();
+  const vals = L.chs.map(ch => {
+    const s = chStat[ch];
+    if (!s || now - s.ts > STALE_CH) return null;
+    return metric === 'pps' ? s.sp : s.sb;
+  });
+  const floor = metric === 'pps' ? 60 : 20000;
+  const target = Math.max(floor, Math.max(0, ...vals.filter(v => v !== null)) * 1.2);
+  if (!paused) scale[kind] += (target - scale[kind]) * 0.2;
+
+  g.strokeStyle = INK; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(ML, mt + ph); g.lineTo(w - MR, mt + ph); g.stroke();
+  g.font = '10px ' + FONT; g.textAlign = 'center'; g.textBaseline = 'bottom';
+  const bw = L.barW * pw, wide = (pw / L.chs.length) >= 26;
+  L.chs.forEach((ch, i) => {
+    const v = vals[i], k = kind + metric + ch;
+    if (!paused) peaks[k] = Math.max(v || 0, (peaks[k] || 0) * 0.995);
+    if (v !== null) {
+      const bh = Math.min(1, v / scale[kind]) * ph;
+      g.fillStyle = BAND_COLOR[kind];
+      g.fillRect(X(ch) - bw / 2, mt + ph - bh, bw, bh);
+      if (wide && v > 0) { g.fillStyle = INK; g.fillText(fmt(v), X(ch), mt + ph - bh - 1); }
+    }
+    if (peaks[k] > 0) {
+      const py = mt + ph - Math.min(1, peaks[k] / scale[kind]) * ph;
+      g.fillStyle = INK; g.globalAlpha = 0.55; g.fillRect(X(ch) - bw / 2, py - 1, bw, 2); g.globalAlpha = 1;
+    }
+  });
+  g.fillStyle = MUTE; g.textAlign = 'left'; g.textBaseline = 'top';
+  g.fillText(metric === 'pps' ? 'パケット/秒' : 'KB/秒', 2, 0);
+  drawChannelAxis(g, L, X, mt + ph, w, true);
+}
+
+function snapshot() {
+  if (paused) return;
+  const now = Date.now();
+  ['24', '5'].forEach(kind => {
+    const row = LAYOUT[kind].chs.map(ch => {
+      const s = chStat[ch];
+      return (!s || now - s.ts > STALE_CH) ? null : { p: s.sp, b: s.sb };
+    });
+    hist[kind].unshift(row);
+    if (hist[kind].length > HIST_N) hist[kind].pop();
+  });
+}
+
+function drawWater(kind) {
+  const L = LAYOUT[kind], { g, w, h } = fit($('#w' + kind), HIST_N);
+  const pw = w - ML - MR, X = ch => ML + L.x(ch) * pw, bw = L.barW * pw;
+  g.clearRect(0, 0, w, h);
+  g.fillStyle = BAND_COLOR[kind];
+  hist[kind].forEach((row, r) => {
+    row.forEach((c, i) => {
+      if (!c) return;
+      const v = metric === 'pps' ? c.p : c.b;
+      const t = Math.min(1, Math.sqrt(v / scale[kind]));
+      g.globalAlpha = 0.06 + 0.94 * t;
+      g.fillRect(X(L.chs[i]) - bw / 2, r, bw, 1);
+    });
+  });
+  g.globalAlpha = 1;
+  g.font = '10px ' + FONT; g.fillStyle = MUTE; g.textAlign = 'right';
+  g.textBaseline = 'top'; g.fillText('いま', ML - 6, 0);
+  g.textBaseline = 'bottom'; g.fillText(HIST_N + '秒', ML - 6, h);
+}
+
+// 空き具合のおすすめ(低いほど空いている)。APの占有幅を使って重なりを数える
+const blk5 = c => c <= 48 ? 0 : c <= 64 ? 1 : c <= 112 ? 2 : c <= 128 ? 3 : c <= 144 ? 4 : c <= 161 ? 5 : 6;
+function occ5(a) {
+  if (a.w > 20 && a.c) { const n = a.w / 20; return Array.from({ length: n }, (_, k) => a.c + 4 * (k - (n - 1) / 2)); }
+  return [a.ch];
+}
+function rankSets(items) {
+  const mA = Math.max(...items.map(x => x.ap)), mB = Math.max(...items.map(x => x.ac));
+  if (mA === 0 && mB === 0) return null;
+  items.forEach(x => { x.s = (mA ? x.ap / mA : 0) + (mB ? x.ac / mB : 0); });
+  return items.sort((a, b) => a.s - b.s);
+}
+function recommend(kind) {
+  const now = nowT(), L = LAYOUT[kind];
+  const list = [...aps.values()].filter(a => now - a.ts < STALE_AP && (kind === '24') === (a.ch <= 14));
+  const act = ch => { const s = chStat[ch]; return (s && now - s.ts <= STALE_CH) ? s.sp : 0; };
+  if (kind === '24') {
+    // 候補チャンネル(20MHz, 中心±11MHz)と、各APの占有範囲との重なりの割合
+    const ov = (lo, hi, c) => Math.max(0, Math.min(hi, 2407 + 5 * c + 11) - Math.max(lo, 2407 + 5 * c - 11)) / 22;
+    return { 20: rankSets([1, 6, 11].map(c => {
+      let ap = 0, ac = 0;
+      list.forEach(a => { const sp = a.w === 40 && a.c ? [2407 + 5 * a.c - 21, 2407 + 5 * a.c + 21] : [2407 + 5 * a.ch - 11, 2407 + 5 * a.ch + 11]; ap += Math.max(0, a.rssi + 100) * ov(sp[0], sp[1], c); });
+      L.chs.forEach(ch => { ac += act(ch) * ov(2407 + 5 * ch - 11, 2407 + 5 * ch + 11, c); });
+      return { S: [c], ap, ac };
+    })) };
+  }
+  const score = sets => sets.map(S => {
+    let ap = 0, ac = 0;
+    list.forEach(a => {
+      const w = Math.max(0, a.rssi + 100), oc = a.w ? occ5(a) : null;
+      // 幅が分かるAPは占有チャンネルのみ。幅不明のAPは同じ80MHzブロックを少し加点
+      S.forEach(c => { ap += w * (oc ? (oc.includes(c) ? 1 : 0) : (a.ch === c ? 1 : blk5(a.ch) === blk5(c) ? 0.35 : 0)) / S.length; });
+    });
+    S.forEach(c => L.chs.forEach(ch => { ac += act(ch) * (ch === c ? 1 : blk5(ch) === blk5(c) ? 0.35 : 0) / S.length; }));
+    return { S, ap, ac };
+  });
+  return {
+    20: rankSets(score([[36], [40], [44], [48], [149], [153], [157], [161], [165]])),
+    40: rankSets(score([[36, 40], [44, 48], [149, 153], [157, 161]])),
+    80: rankSets(score([[36, 40, 44, 48], [149, 153, 157, 161]]))
+  };
+}
+const fmtSet = S => S.length === 1 ? `${S[0]}ch` : S.length === 2 ? `${S[0]}+${S[1]}` : `${S[0]}–${S[S.length - 1]}`;
+function renderRec() {
+  const r24 = recommend('24')[20];
+  $('#rec24').textContent = r24 ? `おすすめ: ${fmtSet(r24[0].S)}(次点 ${fmtSet(r24[1].S)})。2.4GHzは20MHz幅が基本です` : 'おすすめ: 測定待ち';
+  const r5 = recommend('5'), parts = [];
+  [[20, '20MHz幅'], [40, '40MHz幅'], [80, '80MHz幅']].forEach(([w, lab]) => {
+    const r = r5[w]; if (r) parts.push(`${lab}なら ${fmtSet(r[0].S)}` + (w === 20 && r[1] ? `(次点 ${fmtSet(r[1].S)})` : ''));
+  });
+  $('#rec5').textContent = parts.length ? 'おすすめ(DFSなし): ' + parts.join(' / ') : 'おすすめ: 測定待ち';
+}
+
+function renderTable() {
+  const now = nowT(), mine = mineList();
+  const list = [...aps.values()].filter(a => now - a.ts < STALE_AP).sort((a, b) => b.rssi - a.rssi);
+  if (!paused) for (const [k, a] of aps) if (Date.now() - a.ts >= STALE_AP) aps.delete(k);
+  const tb = $('#aptable'); tb.replaceChildren();
+  list.forEach(a => {
+    const tr = document.createElement('tr');
+    if (isMine(a, mine)) { tr.style.fontWeight = '700'; tr.style.background = '#e6efe9'; }
+    const td = (txt, cls) => { const c = document.createElement('td'); if (cls) c.className = cls; c.textContent = txt; tr.append(c); return c; };
+    const c0 = td(''); const sw = document.createElement('span'); sw.className = 'swatch'; sw.style.background = AP_COLORS[hash(a.bssid) % AP_COLORS.length];
+    c0.append(sw, a.ssid || '(非公開)');
+    td(a.ch <= 14 ? '2.4G' : '5G'); td(a.ch, 'num'); td(a.w ? a.w + ' MHz' : '不明', 'num'); td(a.rssi + ' dBm', 'num');
+    td(a.auth === undefined ? '—' : (AUTH[a.auth] || '他')); td(a.bssid);
+    tb.append(tr);
+  });
+  $('#apcount').textContent = list.length + ' 件(約1分以内に見えたもの)';
+  renderRec();
+}
+
+// ---------- 保存 ----------
+function stamp() { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; }
+function download(blob, name) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function saveCsv() {
+  const now = nowT(), t = new Date().toLocaleString('ja-JP');
+  // SSIDは周囲の誰でも付けられるので、Excelで数式と解釈される先頭文字は無効化する
+  const safe = v => /^[=+\-@\t\r]/.test(v) ? "'" + v : v;
+  const rows = [['時刻', 'SSID', '帯域', 'ch', '幅(MHz)', '中心ch', 'RSSI(dBm)', '暗号化', 'BSSID']];
+  [...aps.values()].filter(a => now - a.ts < STALE_AP).sort((a, b) => b.rssi - a.rssi)
+    .forEach(a => rows.push([t, safe(a.ssid || '(非公開)'), a.ch <= 14 ? '2.4G' : '5G', a.ch, a.w || '不明', a.w ? a.c : '', a.rssi, a.auth === undefined ? '' : (AUTH[a.auth] || '他'), a.bssid]));
+  const csv = '\ufeff' + rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+  download(new Blob([csv], { type: 'text/csv' }), 'wifi-aps-' + stamp() + '.csv');
+}
+function savePng() {
+  const dpr = window.devicePixelRatio || 1, secs = [['2.4 GHz', '24'], ['5 GHz', '5']], parts = ['m', 'b', 'w'];
+  const W = $('#m24').width, head = Math.round(40 * dpr), lab = Math.round(26 * dpr);
+  const total = head + secs.reduce((hh, [, k]) => hh + lab + parts.reduce((x, p) => x + $('#' + p + k).height, 0), 0);
+  const c = document.createElement('canvas'); c.width = W; c.height = total;
+  const g = c.getContext('2d');
+  g.fillStyle = '#f9fafa'; g.fillRect(0, 0, W, total);
+  g.fillStyle = INK; g.textBaseline = 'top'; g.font = `${16 * dpr}px ${FONT}`;
+  g.fillText('Wi-Fi スペクトラムスコープ  ' + new Date().toLocaleString('ja-JP'), 0, 8 * dpr);
+  let y = head;
+  secs.forEach(([t, k]) => {
+    g.font = `bold ${14 * dpr}px ${FONT}`; g.fillStyle = INK; g.fillText(t, 0, y + 4 * dpr); y += lab;
+    parts.forEach(p => { const cv = $('#' + p + k); g.drawImage(cv, 0, y); y += cv.height; });
+  });
+  c.toBlob(b => download(b, 'wifi-scope-' + stamp() + '.png'));
+}
+
+function frame() { ['24', '5'].forEach(k => { drawMountains(k); drawBars(k); drawWater(k); }); }
+
+// ---------- 起動 ----------
+$('#connect').onclick = connect;
+$('#auto').onchange = () => assignRoles();
+$('#csv').onclick = saveCsv;
+$('#png').onclick = savePng;
+$('#pause').onclick = () => {
+  paused = !paused; if (paused) pausedAt = Date.now();
+  $('#pause').setAttribute('aria-pressed', paused);
+  $('#pause').textContent = paused ? '再開' : '一時停止';
+};
+try { $('#mine').value = localStorage.getItem('c5scope.mine') || ''; } catch {}
+$('#mine').oninput = () => { try { localStorage.setItem('c5scope.mine', $('#mine').value); } catch {} };
+setInterval(snapshot, 1000);
+document.querySelectorAll('#metric button').forEach(b => b.onclick = () => {
+  metric = b.dataset.m;
+  document.querySelectorAll('#metric button').forEach(x => x.setAttribute('aria-pressed', x === b));
+});
+window.addEventListener('resize', frame);
+setInterval(frame, 100);
+setInterval(renderTable, 1000);
+frame();
+if (!('serial' in navigator)) toast('このブラウザは Web Serial に対応していません。Chrome か Edge で開いてください。');
+</script>
+</body>
+</html>
